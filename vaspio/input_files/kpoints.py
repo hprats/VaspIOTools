@@ -48,7 +48,7 @@ class Kpoints:
         f.write('Automatic mesh\n')
         f.write('0\n')
         f.write('Gamma\n')
-        f.write(f"{self.num_x} {self.num_y} {self.num_z}")
+        f.write(f"{self.num_x} {self.num_y} {self.num_z}\n")
         f.write('0 0 0\n')
         f.close()
         os.chdir(initial_directory)

@@ -14,6 +14,14 @@ def get_elements(list_elements_repeated):
 
 
 class Poscar:
+    """A class that represents a POSCAR file.
+
+    Attributes:
+        atoms (ase.atoms.Atoms object): an Atoms object representing the system.
+
+    Examples:
+        my_poscar = Poscar(atoms)
+    """
 
     def __init__(self, atoms=None):
         if isinstance(atoms, ase.atoms.Atoms):
@@ -24,6 +32,7 @@ class Poscar:
         self.elements = get_elements(atoms.get_chemical_symbols())
 
     def write(self, path='.'):
+        """Write the POSCAR file."""
         initial_directory = os.getcwd()
         os.chdir(path)
         self.atoms.write(filename='POSCAR', vasp5=True)
