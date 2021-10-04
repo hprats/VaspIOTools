@@ -8,6 +8,7 @@ class Incar:
         tags (dict): a dictionary of INCAR tags.
 
     Examples:
+    >>> tags = {'IBRION': 2, 'EDIFF': 1E-05, 'EDIFFG': -0.01}
     >>> my_incar = Incar(tags)
     """
 

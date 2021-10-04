@@ -10,6 +10,7 @@ class Potcar:
                 elements = Poscar(atoms).elements
 
     Examples:
+    >>> elements = ['Cu', 'C', 'O']
     >>> my_potcar = Potcar(elements)
     """
 
