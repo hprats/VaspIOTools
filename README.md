@@ -2,7 +2,7 @@ VaspIOTools
 ===========
 
 This project is a collective of tools for the preparation of input files and
-post processing of output files from VASP.
+post-processing of output files from VASP.
 
 ### Installation
 
