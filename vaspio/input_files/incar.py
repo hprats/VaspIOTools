@@ -8,7 +8,7 @@ class Incar:
         tags (dict): a dictionary of INCAR tags.
 
     Examples:
-        my_incar = Incar(tags)
+    >>> my_incar = Incar(tags)
     """
 
     def __init__(self, tags=None):

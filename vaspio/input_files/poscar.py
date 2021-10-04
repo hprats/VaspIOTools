@@ -20,7 +20,8 @@ class Poscar:
         atoms (ase.atoms.Atoms object): an Atoms object representing the system.
 
     Examples:
-        my_poscar = Poscar(atoms)
+    >>> atoms = ase.atoms.Atoms('N2', [(0, 0, 0), (0, 0, 1.1)])
+    >>> my_poscar = Poscar(atoms)
     """
 
     def __init__(self, atoms=None):

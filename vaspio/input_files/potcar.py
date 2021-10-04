@@ -2,6 +2,16 @@ import os
 
 
 class Potcar:
+    """A class that represents a POTCAR file.
+
+    Attributes:
+        elements (list): List of elements needed to create the POTCAR.
+            It must be consistent with the POSCAR file, and can be created as follows:
+                elements = Poscar(atoms).elements
+
+    Examples:
+    >>> my_potcar = Potcar(elements)
+    """
 
     POTCARS_DIR = '/Users/hectorpratsgarcia/PycharmProjects/tmc4mpo/potcars'
 
@@ -23,6 +33,7 @@ class Potcar:
             print("New elements variable for POTCAR file is not a list")
 
     def write(self, path='.'):
+        """Write the POTCAR file."""
         initial_directory = os.getcwd()
         os.chdir(path)
         with open('POTCAR', 'w') as outfile:
@@ -31,4 +42,3 @@ class Potcar:
                     for line in infile:
                         outfile.write(line)
         os.chdir(initial_directory)
-

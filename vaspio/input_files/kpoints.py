@@ -3,19 +3,46 @@ import numpy as np
 
 
 class Kpoints:
+    """A class that represents a KPOINTS file.
 
-    def __init__(self, is_bulk=False, density=None, numbers=None,
+    Attributes:
+        is_slab (bool): True for slab systems, False for bulk or gas.
+            If is_slab = True, the number of kpoints in the z direction is one.
+        density (int): The density of kpoints along the x and y direction (is_slab = True)
+            or x, y and z (is_slab = False), in kpoints / Å.
+        numbers (int): A list of integers representing the number of kpoints along the
+            x, y and z directions.
+        lat_x (float): length of the supercell in the x direction, in Å.
+        lat_y (float): length of the supercell in the y direction, in Å.
+        lat_z (float): length of the supercell in the z direction, in Å.
+
+    Examples:
+
+        Slab calculation with density:
+        >>> my_kpoints = Kpoints(density=60, lat_x=6.5, lat_y=5.7)
+
+        Slab calculation with number of kpoints:
+        >>> my_kpoints = Kpoints(numbers=[6, 6, 1])
+
+        Bulk calculation with density:
+        >>> my_kpoints = Kpoints(density=60, lat_x=3.5, lat_y=3.5, lat_z=2.9)
+
+        Isolated molecule calculation:
+        >>> my_kpoints = Kpoints(numbers=[1, 1, 1])
+    """
+
+    def __init__(self, is_slab=True, density=None, numbers=None,
                  lat_x=None, lat_y=None, lat_z=None):
-        self._is_bulk = is_bulk
+        self._is_slab = is_slab
         self._density = density
         if numbers is None:   # Density specified
             if isinstance(density, int):
                 self.num_x = int(np.ceil(density / lat_x))
                 self.num_y = int(np.ceil(density / lat_y))
-                if is_bulk:
-                    self.num_z = int(np.ceil(density / lat_z))
-                else:
+                if is_slab:
                     self.num_z = 1
+                else:
+                    self.num_z = int(np.ceil(density / lat_z))
             else:
                 print("K-points density must be int")
         else:  # Numbers specified
@@ -28,7 +55,7 @@ class Kpoints:
 
     @property
     def is_bulk(self):
-        return self._is_bulk
+        return self._is_slab
 
     @property
     def density(self):
@@ -42,6 +69,7 @@ class Kpoints:
             print("New density for KPOINTS file is not an integer")
 
     def write(self, path='.'):
+        """Write the KPOINTS file."""
         initial_directory = os.getcwd()
         os.chdir(path)
         f = open('KPOINTS', 'w')
