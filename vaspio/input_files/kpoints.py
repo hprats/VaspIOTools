@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import json
 
 
 class Kpoints:
@@ -53,6 +54,11 @@ class Kpoints:
             else:
                 print("K-point numbers must be a list")
 
+    @classmethod
+    def from_json(cls, json_string):
+        json_dict = json.loads(json_string)
+        return cls(**json_dict)
+
     @property
     def is_bulk(self):
         return self._is_slab
@@ -80,3 +86,7 @@ class Kpoints:
         f.write('0 0 0\n')
         f.close()
         os.chdir(initial_directory)
+
+    @property
+    def is_slab(self):
+        return self._is_slab
