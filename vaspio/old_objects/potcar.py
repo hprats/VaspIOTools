@@ -22,6 +22,14 @@ class Potcar:
         else:
             self._elements = elements
 
+    @classmethod
+    def from_dict(cls, dct):
+        elements = dct['_elements']
+
+        potcar = cls(elements=elements)
+        return potcar
+
+
     @property
     def elements(self):
         return self._elements

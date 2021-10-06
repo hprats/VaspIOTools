@@ -18,6 +18,13 @@ class Incar:
         else:
             self._tags = tags
 
+    @classmethod
+    def from_dict(cls, dct):
+        tags = dct['_tags']
+
+        incar = cls(tags=tags)
+        return incar
+
     @property
     def tags(self):
         return self._tags

@@ -32,6 +32,14 @@ class Poscar:
 
         self.elements = get_elements(atoms.get_chemical_symbols())
 
+    @classmethod
+    def from_dict(cls, dct):
+        atoms = dct['atoms']
+
+        incar = cls(atoms=atoms)
+        return incar
+
+
     def write(self, path='.'):
         """Write the POSCAR file."""
         initial_directory = os.getcwd()
