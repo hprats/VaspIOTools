@@ -108,11 +108,11 @@ class Job:
 
     POTCARS_DIR = '/Users/hectorpratsgarcia/PycharmProjects/tmc4mpo/potcars'
 
-    def __init__(self, job_name, path=None,
+    def __init__(self, path,
                  incar=None, kpoints=None, atoms_poscar=None, atoms_contcar=None,
                  energy=None, num_restarts=None, status=None, name_std_output='vasp.out'):
 
-        self.job_name = job_name
+        self.job_name = path.split('/')[-1]
         self.path = path
         self.incar = incar
         self.kpoints = kpoints
@@ -124,6 +124,7 @@ class Job:
         self.name_std_output = name_std_output
 
     def read(self):
+        """Read INCAR, KPOINTS, POSCAR and CONTCAR files and store their information"""
         if os.path.isfile(f'{self.path}/INCAR'):
             self.incar = self.read_incar()
         if os.path.isfile(f'{self.path}/KPOINTS'):
@@ -137,6 +138,7 @@ class Job:
             self.energy = self.get_energy_oszicar()
 
     def read_incar(self):
+        """Read INCAR file and store its information as a vaspio.Incar object"""
         with open(f'{self.path}/INCAR') as infile:
             lines = infile.readlines()
         incar_tags = {}
@@ -147,16 +149,25 @@ class Job:
         return Incar(incar_tags)
 
     def read_kpoints(self):
+        """Read KPOINTS file and store its information as a vaspio.Kpoints object"""
         with open(f'{self.path}/KPOINTS') as infile:
             lines = infile.readlines()
-        pass
-        # TODO: write this method
+        num_x = lines[3].split(' ')[0]
+        num_y = lines[3].split(' ')[1]
+        num_z = lines[3].split(' ')[2]
+        if num_x != 1 and num_y != 1 and num_z == 1:
+            is_slab = True
+        else:
+            is_slab = False
+        return Kpoints(is_slab=is_slab, numbers=[num_x, num_y, num_z])
 
     def converged(self):
-        return 'reached required accuracy' in str(subprocess.check_output(f"tail -n4 {self.path}/{self.name_std_output}", shell=True))
+        return 'reached required accuracy' in \
+               str(subprocess.check_output(f"tail -n4 {self.path}/{self.name_std_output}", shell=True))
 
     def bracketing_error(self):
-        return 'fatal error in bracketing' in str(subprocess.check_output(f"tail -n7 {self.path}/{self.name_std_output}", shell=True))
+        return 'fatal error in bracketing' in \
+               str(subprocess.check_output(f"tail -n7 {self.path}/{self.name_std_output}", shell=True))
 
     def get_bracketing_diff(self):
         output = str(subprocess.check_output(f"grep F {self.path}/OSZICAR | tail -n2", shell=True))
@@ -174,12 +185,15 @@ class Job:
 
     def nelm_reached(self):
         nelm = self.incar.tags['NELM']
-        return f"RMM: {nelm}" in str(subprocess.check_output(f"tail -n{int(nelm) + 15} {self.path}/OSZICAR", shell=True))
+        return f"RMM: {nelm}" in \
+               str(subprocess.check_output(f"tail -n{int(nelm) + 15} {self.path}/OSZICAR", shell=True))
 
     def other_error(self):
-        return 'error' in str(subprocess.check_output(f"tail -n10 {self.path}/{self.name_std_output}", shell=True))
+        return 'error' in \
+               str(subprocess.check_output(f"tail -n10 {self.path}/{self.name_std_output}", shell=True))
 
     def get_job_status(self):
+        """Check the status of the job."""
         if not os.path.isfile(f"{self.path}/{self.name_std_output}"):
             job_status = 'qw'
         elif os.stat(f"{self.path}/{self.name_std_output}").st_size == 0:  # standard output is empty
