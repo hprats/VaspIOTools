@@ -12,7 +12,7 @@ class NewJob:
     """A class that represents a new VASP job.
 
     Attributes:
-        job_name (str): The name of the job. Will be used as the name of the folder.
+        path (str): The path of the job including the job name. Will be used as the name of the folder.
         incar (vaspio.Incar): An object that represents an INCAR file.
         kpoints (vaspio.Kpoints): An object that represents a KPOINTS file
         atoms (ase.atoms.Atoms): An ASE Atoms object that contains the geometry for the system
@@ -27,7 +27,7 @@ class NewJob:
         >>>    'gerun vasp_std > vasp.out'
         >>> ]
         >>> my_job = NewJob(
-        >>>    job_name='N2_gas',
+        >>>    path='/home/test/N2_gas',
         >>>    incar=Incar(tags),
         >>>    kpoints=Kpoints(numbers=[1, 1, 1]),
         >>>    atoms=ase.atoms.Atoms('N2', [(0, 0, 0), (0, 0, 1.12)],
@@ -38,47 +38,42 @@ class NewJob:
     POTCARS_DIR = '/Users/hectorpratsgarcia/PycharmProjects/tmc4mpo/potcars'
     NAME_SUBMISSION_SCRIPT = 'vasp_sub'
 
-    def __init__(self, job_name, incar, kpoints, atoms, submission_script):
-        if isinstance(job_name, str):
-            self.job_name = job_name
+    def __init__(self, path, incar, kpoints, atoms, submission_script):
+        if isinstance(path, str):
+            self.path = path
+            self.name = path.split('/')[-1]
             self.incar = incar
             self.kpoints = kpoints
             self.atoms = atoms
             self.submission_script = submission_script
 
-    def write_submission_script(self):
-        """Prints the submission script into a new file named vasp_sub"""
-        f = open(f'{NewJob.NAME_SUBMISSION_SCRIPT}', 'w')
-        for line in self.submission_script:
-            f.write(line + '\n')
-        f.close()
-
     def create_job_dir(self, path='.'):
         """Creates a new directory, with the name job_name, and writes there the VASP input files
         i.e. INCAR, POSCAR, KPOINTS and POTCAR, and the submission script"""
-        initial_directory = os.getcwd()
-        os.chdir(path)
-        os.mkdir(self.job_name)
-        os.chdir(self.job_name)
+        os.mkdir(self.path)
         self.incar.write()
         self.kpoints.write()
-        self.atoms.ase_write(filename='POSCAR', vasp5=True)
-        self.write_potcar(self.atoms)
+        self.atoms.ase_write(filename=f'{self.path}/POSCAR', vasp5=True)
+        self.write_potcar()
         self.write_submission_script()
-        os.chdir(initial_directory)
 
-    @staticmethod
-    def write_potcar(atoms):
+    def write_submission_script(self):
+        """Prints the submission script into a new file named vasp_sub"""
+        with open(f"{self.path}/{NewJob.NAME_SUBMISSION_SCRIPT}", 'w') as infile:
+            for line in self.submission_script:
+                infile.write(line + '\n')
+
+    def write_potcar(self):
         """Writes the POTCAR file to the current directory
         First, a list of elements is created (elements_for_potcar), which determines which
-        atomic POTCAR files will be concatenated to make the full POTCAR"""
+        atomic POTCAR files will be concatenated to make the final POTCAR"""
         elements_for_potcar = []
-        current_element = atoms.get_chemical_symbols()[0]
-        for element in atoms.get_chemical_symbols()[1:]:
+        current_element = self.atoms.get_chemical_symbols()[0]
+        for element in self.atoms.get_chemical_symbols()[1:]:
             if element != current_element:
                 elements_for_potcar.append(element)
                 current_element = element
-        with open('POTCAR', 'w') as outfile:
+        with open(f'{self.path}/POTCAR', 'w') as outfile:
             for element in elements_for_potcar:
                 with open(f"{NewJob.POTCARS_DIR}/POTCAR-{element}") as infile:
                     for line in infile:
