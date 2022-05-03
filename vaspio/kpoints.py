@@ -33,8 +33,8 @@ class Kpoints:
 
     def __init__(self, is_slab=True, density=None, numbers=None,
                  lat_x=None, lat_y=None, lat_z=None):
-        self._is_slab = is_slab
-        self._density = density
+        self.is_slab = is_slab
+        self.density = density
         if numbers is None:   # Density specified
             if isinstance(density, int):
                 self.num_x = int(np.ceil(density / lat_x))
@@ -44,7 +44,7 @@ class Kpoints:
                 else:
                     self.num_z = int(np.ceil(density / lat_z))
             else:
-                print("K-points density must be int")
+                print(f"K-points density must be int, is {type(self.density)}")
         else:  # Numbers specified
             if isinstance(numbers, list):
                 self.num_x = numbers[0]
@@ -55,45 +55,23 @@ class Kpoints:
 
     @classmethod
     def from_dict(cls, dct):
-        is_slab = dct['_is_slab']
-        density = dct['_density']
-        numbers = dct['numbers']
-        lat_x = dct['lat_x']
-        lat_y = dct['lat_y']
-        lat_z = dct['lat_z']
-
-        kpoints = cls(is_slab=is_slab, density=density, numbers=numbers,
-                      lat_x=lat_x, lat_y=lat_y, lat_z=lat_z)
+        is_slab = dct['is_slab']
+        if 'density' in dct:
+            density = dct['density']
+        else:
+            density = None
+        if 'num_x' in dct and 'num_y' in dct and 'num_z' in dct:
+            numbers = [int(dct['num_x']), int(dct['num_y']), int(dct['num_z'])]
+        else:
+            numbers = None
+        kpoints = cls(is_slab=is_slab, density=density, numbers=numbers)
         return kpoints
 
-    @property
-    def is_bulk(self):
-        return self._is_slab
-
-    @property
-    def density(self):
-        return self._density
-
-    @density.setter
-    def density(self, new_density):
-        if isinstance(new_density, int):
-            self._density = new_density
-        else:
-            print("New density for KPOINTS file is not an integer")
-
-    def write(self, path='.'):
+    def write(self, path):
         """Write the KPOINTS file."""
-        initial_directory = os.getcwd()
-        os.chdir(path)
-        f = open('KPOINTS', 'w')
-        f.write('Automatic mesh\n')
-        f.write('0\n')
-        f.write('Gamma\n')
-        f.write(f"{self.num_x} {self.num_y} {self.num_z}\n")
-        f.write('0 0 0\n')
-        f.close()
-        os.chdir(initial_directory)
-
-    @property
-    def is_slab(self):
-        return self._is_slab
+        with open(f"{path}/KPOINTS", 'w') as infile:
+            infile.write('Automatic mesh\n')
+            infile.write('0\n')
+            infile.write('Gamma\n')
+            infile.write(f"{self.num_x} {self.num_y} {self.num_z}\n")
+            infile.write('0 0 0\n')

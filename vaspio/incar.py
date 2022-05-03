@@ -57,12 +57,8 @@ class Incar:
         else:
             print(f"Can't update tag. Tag {key} does not exist")
 
-    def write(self, path='.'):
+    def write(self, path):
         """Write the INCAR file."""
-        initial_directory = os.getcwd()
-        os.chdir(path)
-        f = open('INCAR', 'w')
-        for tag in self._tags:
-            f.write(f"{tag} = {self._tags[tag]}\n")
-        f.close()
-        os.chdir(initial_directory)
+        with open(f"{path}/INCAR", 'w') as infile:
+            for tag in self._tags:
+                infile.write(f"{tag} = {self._tags[tag]}\n")
