@@ -51,14 +51,24 @@ class Incar:
             print(f"Can't remove tag. Tag {key} does not exist")
 
     def update_tag(self, key, value):
-        """Modify the value of an existing tag."""
-        if key in self._tags:
-            self._tags[key] = value
-        else:
-            print(f"Can't update tag. Tag {key} does not exist")
+        """Modify the value of an existing tag.
+        If the tag does not exist, it is added."""
+        self._tags[key] = value
 
     def write(self, path):
         """Write the INCAR file."""
         with open(f"{path}/INCAR", 'w') as infile:
             for tag in self._tags:
                 infile.write(f"{tag} = {self._tags[tag]}\n")
+
+    @classmethod
+    def from_file(cls, path):
+        """Read an existing INCAR file and store it as a INCAR object"""
+        with open(f"{path}/INCAR", 'r') as infile:
+            lines = infile.readlines()
+        tags = {}
+        for line in lines:
+            if '=' in line:
+                tags[line.split('=')[0].strip()] = line.split('=')[1].strip()
+        incar = cls(tags=tags)
+        return incar

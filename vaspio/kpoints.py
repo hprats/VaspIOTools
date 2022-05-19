@@ -53,6 +53,15 @@ class Kpoints:
             else:
                 print("K-point numbers must be a list")
 
+    def write(self, path):
+        """Write the KPOINTS file."""
+        with open(f"{path}/KPOINTS", 'w') as infile:
+            infile.write('Automatic mesh\n')
+            infile.write('0\n')
+            infile.write('Gamma\n')
+            infile.write(f"{self.num_x} {self.num_y} {self.num_z}\n")
+            infile.write('0 0 0\n')
+
     @classmethod
     def from_dict(cls, dct):
         is_slab = dct['is_slab']
@@ -67,11 +76,13 @@ class Kpoints:
         kpoints = cls(is_slab=is_slab, density=density, numbers=numbers)
         return kpoints
 
-    def write(self, path):
-        """Write the KPOINTS file."""
-        with open(f"{path}/KPOINTS", 'w') as infile:
-            infile.write('Automatic mesh\n')
-            infile.write('0\n')
-            infile.write('Gamma\n')
-            infile.write(f"{self.num_x} {self.num_y} {self.num_z}\n")
-            infile.write('0 0 0\n')
+    @classmethod
+    def from_file(cls, path):
+        """Read an existing KPOINTS file and store it as a KPOINTS object"""
+        with open(f"{path}/KPOINTS", 'r') as infile:
+            lines = infile.readlines()
+        num_x = lines[-2].split(' ')[0].strip()
+        num_y = lines[-2].split(' ')[1].strip()
+        num_z = lines[-2].split(' ')[2].strip()
+        kpoints = cls(numbers=[num_x, num_y, num_z])
+        return kpoints

@@ -1,12 +1,17 @@
 import os
 import numpy as np
+import subprocess
 from glob import glob
 import json
 
 import ase.neb
 from ase import io
+from ase.constraints import FixAtoms
 
 from vaspio.variables import *
+from vaspio.incar import Incar
+from vaspio.kpoints import Kpoints
+from vaspio.jobs import NewJobNative
 
 
 class NewNebNative:
@@ -66,7 +71,7 @@ class NewNebNative:
         else:
             print(f'{self.path} already exists (nothing done)')
 
-    def write_submission_script(self):  # todo: update (neb)
+    def write_submission_script(self):
         """Prints the submission script into a new file named vasp_sub"""
         with open(f"{self.path}/{name_submission_script}", 'w') as infile:
             for line in self.submission_script:
@@ -230,13 +235,13 @@ class NewNebML:
 
 class NebML:
 
-    def __init__(self, path, status=None, energy_barrier=None, reaction_energy=None):  # last 3 added for JSON
-        if isinstance(path, str):
-            self.path = path
-            self.name = path.split('/')[-1]
-            self.status = status
-            self.energy_barrier = energy_barrier
-            self.reaction_energy = reaction_energy
+    def __init__(self, path, status=None, energies=None, vibrations=None, num_atoms_adsorbate=None):
+        self.path = path
+        self.name = path.split('/')[-1]
+        self.status = status
+        self.energies = energies
+        self.vibrations = vibrations
+        self.num_atoms_adsorbate = num_atoms_adsorbate
 
     def write_json(self):
         """Write JSON file."""
@@ -246,7 +251,6 @@ class NebML:
             print(json_data, file=outfile)
 
     @classmethod
-    # todo: update
     def read_from_json(cls, path):
         """Don't include attributes that will be set by __init__, e.g. adsorbate_config."""
         if len(glob(f"{path}/*.json")) == 0:
@@ -259,32 +263,59 @@ class NebML:
             with open(glob(f"{path}/*.json")[0], 'r') as json_file:
                 dct = json.loads(json_file.read())
             status = dct['status']
-            energy_barrier = dct['energy_barrier']
-            reaction_energy = dct['reaction_energy']
+            energies = dct['energies']
+            vibrations = dct['vibrations']
+            num_atoms_adsorbate = dct['num_atoms_adsorbate']
 
-            job = cls(path=path, status=None, energy_barrier=None, reaction_energy=None)
+            job = cls(path=path, status=status, energies=energies, vibrations=vibrations,
+                      num_atoms_adsorbate=num_atoms_adsorbate)
             return job
 
-    def get_energy_barrier(self):
+    def get_energies(self):
+        images = io.read(f"{self.path}/ML-NEB.traj", index=":")
+        energies = np.zeros(len(images))
+        for i in range(len(images)):
+            energies[i] = images[i].get_potential_energy()
+        return energies
+
+    def get_vibrations(self):
         pass
+
+    def get_energy_barrier(self):
+        return np.max(self.energies) - self.energies[0]
 
     def get_reaction_energy(self):
-        pass
+        return self.energies[-1] - self.energies[0]
 
     @classmethod
-    def read_from_cluster(cls, path):
-        job = cls(path=path)
+    def read_from_cluster(cls, path, num_atoms_adsorbate):
+        job = cls(path=path, num_atoms_adsorbate=num_atoms_adsorbate)
         job.status = job.get_job_status()
         if job.status == 'done':
-            job.energy_barrier = job.get_energy_barrier()
-            job.reaction_energy = job.get_reaction_energy()
+            job.energies = job.get_energies()
         return job
 
     def NEB_converged(self):
-        pass
+        return 'Energy barrier' in \
+               str(subprocess.check_output(f"tail -n4 {self.path}/{name_std_output}", shell=True))
 
     def freq_done(self):
-        pass
+        return 'Voluntary context switches' in \
+               str(subprocess.check_output(f"tail -n4 {self.path}/vibrations/OUTCAR", shell=True))
+
+    def is_ts(self):
+        output = str(subprocess.check_output(f"grep cm-1 {self.path}/vibrations/OUTCAR", shell=True))
+        return output.count('f/i') == 1
+
+    def new_minimum(self):
+        new_minimum = False
+        for i in range(1, np.argmax(self.energies)):
+            if self.energies[i] < self.energies[0]:
+                new_minimum = True
+        for i in range(np.argmax(self.energies)+1, -1):
+            if self.energies[i] < self.energies[-1]:
+                new_minimum = True
+        return new_minimum
 
     def check_queue(self, qstat_list):
         in_queue = False
@@ -310,23 +341,22 @@ class NebML:
             job_status = f'README: {readme_info}'
         elif not os.path.isfile(f"{self.path}/{name_std_output}"):
             job_status = 'not submitted'
-        elif os.path.isdir(f"{self.path}/freq"):
+        elif os.path.isdir(f"{self.path}/vibrations"):
             if self.freq_done():
-                job_status = 'done'
+                if self.is_ts():
+                    job_status = 'done'
+                else:
+                    job_status = 'not TS'
             else:
-                job_status = 'problem vibrations'
+                job_status = 'vibrations not converged'
         elif self.NEB_converged():
-            job_status = 'NEB converged'
+            if self.new_minimum():
+                job_status = 'new minimum'
+            else:
+                job_status = 'NEB converged'
         else:
             job_status = 'max wallclock'
         return job_status
-
-    def rm_vasp_outputs(self):
-        # todo: update
-        files_list = [f for f in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, f))]
-        for file in files_list:
-            if file not in ['INCAR', 'POSCAR', 'KPOINTS', 'POTCAR', 'vasp_native', 'submitted']:
-                os.remove(f"{self.path}/{file}")
 
     def submit(self):
         init_dir = os.getcwd()
@@ -334,7 +364,7 @@ class NebML:
         os.system(f'qsub -N {self.name} {name_submission_script}')
         os.chdir(init_dir)
 
-    def restart(self, dict_new_tags):
+    def restart(self):
         """ Continuation job"""
         # Check if it was already a continuation job
         continuation_job = True
@@ -379,17 +409,9 @@ class NebML:
         os.system(f'qsub -N {self.name} {name_submission_script}')
         os.chdir(init_dir)
 
-    def run_vibrations(self):
-        # todo: update
-        init_dir = os.getcwd()
-        os.mkdir(f"{self.path}/vibrations")
-        # Take highest energy image
-        images = io.read(f"{self.path}/ML-NEB.traj", index=":")
-        energies = np.zeros(len(images))
-        for i in range(len(images)):
-            energies[i] = images[i].get_potential_energy()
-        ts = io.read(f"{self.path}/ML-NEB.traj", index=np.argmax(energies))
-        # Write ase_vasp file
+    def run_vibrations_ase(self):
+        ts = io.read(f"{self.path}/ML-NEB.traj", index=np.argmax(self.energies))
+        io.write(f"{self.path}/ts.traj", ts)  # optional
         with open(f"{self.path}/{name_ase_script}", "r") as infile:
             lines = infile.readlines()
         ase_script_lines = ["from ase.io import read\n",
@@ -409,25 +431,46 @@ class NebML:
                     i += 1
                 break
         ase_script_lines += [" " + "\n",
-                             f"ts = read('../ML-NEB.traj', index=5)\n",
+                             f"ts = read('../ML-NEB.traj', index={np.argmax(self.energies)})\n",
                              "ts.set_calculator(ase_calculator)\n",
-                             "vib = Vibrations(ts, indices='-5:', name='vib')\n",
+                             f"vib = Vibrations(ts, indices='-{self.num_atoms_adsorbate}:', name='vib')\n",
                              "vib.run()\n",
                              " \n",
                              "vib.summary(log='vib.txt')\n",
-                             "for mode in range(len(vib_indices)*3):\n",
+                             f"for mode in range({self.num_atoms_adsorbate}*3):\n",
                              "\tvib.write_mode(mode)\n",
                              " \n",
                              "now = datetime.now()\n",
                              "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')\n",
                              "with open('time.txt', 'a') as outfile:\n",
                              "\toutfile.write(f'{dt_string}: finished \\n')\n"]
-
+        # Run vibrations
+        init_dir = os.getcwd()
+        os.mkdir(f"{self.path}/vibrations")
         with open(f"{self.path}/vibrations/{name_ase_script}", 'w') as outfile:
             for line in ase_script_lines:
                 outfile.write(line)
-
-        # Run vibrations
         os.chdir(f"{self.path}/vibrations")
+        os.system(f'cp ../{name_submission_script} .')
         os.system(f'qsub -N vib_{self.name} {name_submission_script}')
         os.chdir(init_dir)
+
+    def run_vibrations_native(self, submission_script):
+        """ Much faster than using ase.vibrations """
+        ts = io.read(f"{self.path}/ML-NEB.traj", index=np.argmax(self.energies))
+        c = FixAtoms(indices=list(range(len(ts)-self.num_atoms_adsorbate)))
+        ts.set_constraint(c)
+        incar = Incar.from_file(path=self.path)
+        incar.update_tag(key='IBRION', value='5')
+        incar.update_tag(key='POTIM', value='0.03')
+        incar.remove_tag(key='NPAR')
+        kpoints = Kpoints.from_file(path=self.path)
+        job = NewJobNative(
+            path=f"{self.path}/vibrations",
+            incar=incar,
+            kpoints=kpoints,
+            atoms=ts,
+            submission_script=submission_script
+        )
+        job.create_job_dir()
+
