@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 import subprocess
 from glob import glob
@@ -13,10 +14,12 @@ from vaspio.incar import Incar
 from vaspio.kpoints import Kpoints
 from vaspio.jobs import NewJobNative
 
+from cluster_data import *  # If executed locally, this could be an empty file
+
 
 class NewNebNative:
 
-    def __init__(self, path, images, incar, kpoints, atoms_initial, atoms_final, submission_script,
+    def __init__(self, path, images, incar, kpoints, atoms_initial, atoms_final,
                  energy_initial, energy_final):
         if isinstance(path, str):
             self.path = path
@@ -26,7 +29,6 @@ class NewNebNative:
             self.kpoints = kpoints
             self.atoms_initial = atoms_initial
             self.atoms_final = atoms_final
-            self.submission_script = submission_script
             self.energy_initial = energy_initial
             self.energy_final = energy_final
 
@@ -39,10 +41,9 @@ class NewNebNative:
             self.incar.write(self.path)
             self.kpoints.write(self.path)
             self.write_potcar()
-            self.write_submission_script()
             self.write_energies()
             # Create all folders
-            for i in range(self.images+2):
+            for i in range(self.images + 2):
                 if i <= 9:
                     os.mkdir(f'{self.path}/0{i}')
                 else:
@@ -50,9 +51,9 @@ class NewNebNative:
             # Write POSCAR files for reactants and products
             self.atoms_initial.write(filename=f'{self.path}/00/POSCAR', vasp5=True)
             if self.images <= 9:
-                self.atoms_final.write(filename=f'{self.path}/0{self.images+1}/POSCAR', vasp5=True)
+                self.atoms_final.write(filename=f'{self.path}/0{self.images + 1}/POSCAR', vasp5=True)
             else:
-                self.atoms_final.write(filename=f'{self.path}/{self.images+1}/POSCAR', vasp5=True)
+                self.atoms_final.write(filename=f'{self.path}/{self.images + 1}/POSCAR', vasp5=True)
             # Write POSCAR files for images
             constraints = self.atoms_initial.constraints
             list_images = [self.atoms_initial]
@@ -63,7 +64,7 @@ class NewNebNative:
             list_images.append(self.atoms_final)
             neb = ase.neb.NEB(list_images, climb=False, k=0.5)
             neb.interpolate('idpp')
-            for i in range(1, self.images+1):
+            for i in range(1, self.images + 1):
                 if i <= 9:
                     list_images[i].write(filename=f'{self.path}/0{i}/POSCAR', vasp5=True)
                 else:
@@ -71,14 +72,7 @@ class NewNebNative:
         else:
             print(f'{self.path} already exists (nothing done)')
 
-    def write_submission_script(self):
-        """Prints the submission script into a new file named vasp_sub"""
-        with open(f"{self.path}/{name_submission_script}", 'w') as infile:
-            for line in self.submission_script:
-                infile.write(line + '\n')
-
     def write_energies(self):
-        """Prints the submission script into a new file named vasp_sub"""
         with open(f"{self.path}/energies.txt", 'w') as outfile:
             outfile.write(f'{self.energy_initial}\n')
             outfile.write(f'{self.energy_final}\n')
@@ -95,127 +89,34 @@ class NewNebNative:
                 current_element = element
         cmd = 'cat'
         for element in elements_for_potcar:
-            cmd += f' {potcars_dir}/{project_PP_dict[element]}/POTCAR'
+            cmd += f' {potcars_dir_local}/{project_PP_dict[element]}/POTCAR'
         os.system(f'{cmd} > {self.path}/POTCAR')
 
 
 class NewNebML:
 
-    def __init__(self, path, n_images, incar_tags, n_kpoints, atoms_initial, atoms_final, submission_script):
-        if isinstance(path, str):
-            self.path = path
-            self.n_images = n_images
-            self.name = path.split('/')[-1]
-            self.incar_tags = incar_tags
-            self.n_kpoints = n_kpoints
-            self.atoms_initial = atoms_initial
-            self.atoms_final = atoms_final
-            self.submission_script = submission_script
+    def __init__(self, path, n_images, fmax, incar, kpoints, atoms_initial, atoms_final):
+        self.path = path
+        self.n_images = n_images
+        self.fmax = fmax
+        self.name = path.split('/')[-1]
+        incar.add_tag(key='n_images', value=n_images)
+        incar.add_tag(key='fmax', value=fmax)
+        self.incar = incar
+        self.kpoints = kpoints
+        self.atoms_initial = atoms_initial
+        self.atoms_final = atoms_final
 
     def create_job_dir(self):
         """Creates a new directory, with the name job_name, and writes there the VASP input files
         i.e. INCAR, POSCAR, KPOINTS and POTCAR, and the submission script"""
         if not os.path.exists(self.path):
             os.mkdir(self.path)
-            self.write_submission_script()
-            self.write_ase_script()
+            self.incar.write(self.path)
+            self.kpoints.write(self.path)
             self.write_trajectory_files()
         else:
             print(f'{self.path} already exists (nothing done)')
-
-    def write_submission_script(self):
-        """Prints the submission script into a new file named vasp_sub"""
-        with open(f"{self.path}/{name_submission_script}", 'w') as outfile:
-            for line in self.submission_script[:-1]:
-                outfile.write(line + '\n')
-            outfile.write('module load python3/3.9\n')
-            outfile.write(f'python {name_ase_script} > vasp.out\n')
-
-    def write_ase_script(self):
-        ase_script = [
-            "from ase.io import read",
-            "from ase.optimize import BFGS",
-            "from ase.calculators.vasp import Vasp",
-            "import shutil",
-            "import copy",
-            "from catlearn.optimize.mlneb import MLNEB",
-            "from datetime import datetime",
-            " ",
-            "now = datetime.now()",
-            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
-            "with open('time.txt', 'w') as outfile:",
-            "\toutfile.write(f'{dt_string}: starting job ...\\n')",
-            " ",
-            "ase_calculator = Vasp(setups={'base': 'recommended', 'W': '_pv'},",
-            f"\tediff={self.incar_tags['EDIFF']},",
-            f"\tnelm={self.incar_tags['NELM']},",
-            f"\tismear=1,",
-            f"\tsigma=0.2,",
-            "\tlwave=False,",
-            "\tlcharg=False,",
-            f"\tencut=415,",
-            f"\talgo='Fast',",
-            f"\tlreal='Auto',",
-            f"\txc='pbe',",
-            f"\tgga='PE',",
-            f"\tivdw=11,",
-            f"\tldipol=True,",
-            f"\tidipol=3,",
-            f"\tdipol=[0.5, 0.5, 0.5],",
-            f"\tlasph=True,",
-            f"\tispin={self.incar_tags['ISPIN']},",
-            f"\tnpar={self.incar_tags['NPAR']},",
-            "\t# Kpoints",
-            f"\tkpts=({self.n_kpoints[0]}, {self.n_kpoints[1]}, {self.n_kpoints[2]}),",
-            f"\tgamma=True,",
-            "\t)",
-            " ",
-            "# Optimize initial state:",
-            "now = datetime.now()",
-            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
-            "with open('time.txt', 'a') as outfile:",
-            "\toutfile.write(f'{dt_string}: starting optimization of initial state ...\\n')",
-            "slab = read('./optimized_structures/initial.traj')",
-            "slab.set_calculator(copy.deepcopy(ase_calculator))",
-            "qn = BFGS(slab, trajectory='initial.traj')",
-            f"qn.run(fmax={abs(self.incar_tags['EDIFFG'])})",
-            "shutil.copy('./initial.traj', './optimized_structures/initial.traj')",
-            "now = datetime.now()",
-            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
-            "with open('time.txt', 'a') as outfile:",
-            "\toutfile.write(f'{dt_string}: initial state optimized; starting optimization of final state ...\\n')",
-            " ",
-            "# Optimize final state:",
-            "slab = read('./optimized_structures/final.traj')",
-            "slab.set_calculator(copy.deepcopy(ase_calculator))",
-            "qn = BFGS(slab, trajectory='final.traj')",
-            f"qn.run(fmax={abs(self.incar_tags['EDIFFG'])})",
-            "shutil.copy('./final.traj', './optimized_structures/final.traj')",
-            "now = datetime.now()",
-            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
-            "with open('time.txt', 'a') as outfile:",
-            "\toutfile.write(f'{dt_string}: final state optimized, starting ML-NEB ...\\n')",
-            " ",
-            "neb_catlearn = MLNEB(start='initial.traj', end='final.traj',",
-            "\tase_calc=copy.deepcopy(ase_calculator),",
-            f"\tn_images={self.n_images},",
-            "\tinterpolation='idpp',",
-            "\t#restart=True,",
-            "\t)",
-            " ",
-            f"neb_catlearn.run(fmax=0.05, trajectory='ML-NEB.traj')",
-            " ",
-            "now = datetime.now()",
-            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
-            "with open('time.txt', 'a') as outfile:",
-            "\toutfile.write(f'{dt_string}: ML-NEB finished\\n')",
-            " ",
-            "from catlearn.optimize.tools import plotneb",
-            "plotneb(trajectory='ML-NEB.traj', view_path=True)"
-        ]
-        with open(f"{self.path}/{name_ase_script}", 'w') as outfile:
-            for line in ase_script:
-                outfile.write(line + '\n')
 
     def write_trajectory_files(self):
         os.mkdir(f"{self.path}/optimized_structures")
@@ -223,7 +124,7 @@ class NewNebML:
         io.write(f"{self.path}/optimized_structures/final.traj", self.atoms_final)
         list_images = [self.atoms_initial]
         constraints = self.atoms_initial.constraints
-        for i in range(self.n_images-2):
+        for i in range(self.n_images - 2):
             image = self.atoms_initial.copy()
             image.set_constraint(constraints)
             list_images.append(image)
@@ -235,13 +136,19 @@ class NewNebML:
 
 class NebML:
 
-    def __init__(self, path, status=None, energies=None, vibrations=None, num_atoms_adsorbate=None):
+    def __init__(self, path, incar=None, kpoints=None, status=None, energies=None, vibrations=None,
+                 num_atoms_adsorbate=None):
         self.path = path
         self.name = path.split('/')[-1]
+        self.incar = incar
+        self.kpoints = kpoints
         self.status = status
         self.energies = energies
         self.vibrations = vibrations
         self.num_atoms_adsorbate = num_atoms_adsorbate
+
+    def __len__(self):
+        return len(self.energies)
 
     def write_json(self):
         """Write JSON file."""
@@ -290,8 +197,10 @@ class NebML:
     @classmethod
     def read_from_cluster(cls, path, num_atoms_adsorbate):
         job = cls(path=path, num_atoms_adsorbate=num_atoms_adsorbate)
+        job.incar = Incar.from_file(path=path)
+        job.kpoints = Kpoints.from_file(path=path)
         job.status = job.get_job_status()
-        if job.status == 'done':
+        if job.status in ['done', 'NEB converged', 'not TS']:
             job.energies = job.get_energies()
         return job
 
@@ -307,38 +216,47 @@ class NebML:
         output = str(subprocess.check_output(f"grep cm-1 {self.path}/vibrations/OUTCAR", shell=True))
         return output.count('f/i') == 1
 
+    def empty_file(self):
+        if os.path.isfile(f"{self.path}/initial.traj"):
+            try:
+                with open(f"{self.path}/initial.traj", "r") as infile:
+                    lines = infile.readlines()
+                return True
+            except UnicodeDecodeError:
+                return False
+        if os.path.isfile(f"{self.path}/final.traj"):
+            try:
+                with open(f"{self.path}/final.traj", "r") as infile:
+                    lines = infile.readlines()
+                return True
+            except UnicodeDecodeError:
+                return False
+        return False
+
     def new_minimum(self):
-        new_minimum = False
+        if np.argmax(self.energies) == 0 or np.argmax(self.energies) == len(self):
+            return True
         for i in range(1, np.argmax(self.energies)):
             if self.energies[i] < self.energies[0]:
-                new_minimum = True
-        for i in range(np.argmax(self.energies)+1, -1):
+                return True
+        for i in range(np.argmax(self.energies) + 1, -1):
             if self.energies[i] < self.energies[-1]:
-                new_minimum = True
-        return new_minimum
-
-    def check_queue(self, qstat_list):
-        in_queue = False
-        status = None
-        for line in qstat_list:
-            job_name = line.split()[2]
-            if job_name == self.name:
-                in_queue = True
-                status = line.split()[4]
-                break
-        return in_queue, status
+                return True
+        return False
 
     def get_job_status(self):
         """Execute it on the cluster."""
-        with open(f'{path_qstat_list}/qstat_list.txt') as infile:
-            qstat_list = infile.readlines()
-        in_queue, status = self.check_queue(qstat_list)
+        in_queue, status = check_queue(job_name=self.name)
         if in_queue:
             job_status = status
         elif os.path.isfile(f"{self.path}/README"):
             with open(f"{self.path}/README") as f:
                 readme_info = f.readlines()[0].strip()
             job_status = f'README: {readme_info}'
+        elif len(glob(f'{self.path}/core.*')) > 0:
+            job_status = 'core (see std error)'
+        elif self.empty_file():
+            job_status = 'empty file'
         elif not os.path.isfile(f"{self.path}/{name_std_output}"):
             job_status = 'not submitted'
         elif os.path.isdir(f"{self.path}/vibrations"):
@@ -358,10 +276,16 @@ class NebML:
             job_status = 'max wallclock'
         return job_status
 
-    def submit(self):
+    @staticmethod
+    def submit(path, name):
         init_dir = os.getcwd()
-        os.chdir(self.path)
-        os.system(f'qsub -N {self.name} {name_submission_script}')
+        os.chdir(path)
+        if job_scheduler == 'sge':
+            os.system(f'qsub -N {name} {name_submission_script}')
+        elif job_scheduler == 'slurm':
+            os.system(f'sbatch --job-name {name} {name_submission_script}')
+        else:
+            sys.exit('Invalid job_scheduler')
         os.chdir(init_dir)
 
     def restart(self):
@@ -404,12 +328,89 @@ class NebML:
             with open(f"{self.path}/{name_ase_script}", 'w') as outfile:
                 for line in ase_script_lines:
                     outfile.write(line)
-        init_dir = os.getcwd()
-        os.chdir(self.path)
-        os.system(f'qsub -N {self.name} {name_submission_script}')
-        os.chdir(init_dir)
+        self.submit(path=self.path, name=self.name)
+
+    def write_ase_script(self):
+        ase_script = [
+            # Imports
+            "from ase.io import read",
+            "from ase.optimize import BFGS",
+            "from ase.calculators.vasp import Vasp",
+            "import shutil",
+            "import copy",
+            "from catlearn.optimize.mlneb import MLNEB",
+            "from datetime import datetime",
+            " ",
+            # Initial time
+            "now = datetime.now()",
+            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
+            "with open('time.txt', 'w') as outfile:",
+            "\toutfile.write(f'{dt_string}: starting job ...\\n')",
+            " ",
+            # Ase calculator
+            "ase_calculator = Vasp(setups={'base': 'recommended', 'W': '_pv'},"
+        ]
+        for tag in [tag for tag in self.incar.tags if tag not in ['ediffg', 'n_images', 'fmax']]:
+            ase_script.append(f"\t{tag}={self.incar.tags[tag]},")
+        ase_script += [f"\tnpar={npar},",
+                       "\t# Kpoints",
+                       f"\tkpts=({self.kpoints.num_x}, {self.kpoints.num_y}, {self.kpoints.num_z}),",
+                       f"\tgamma=True,",
+                       "\t)",
+                       ]
+        ase_script += [
+            # Initial state optimization
+            "# Optimize initial state:",
+            "now = datetime.now()",
+            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
+            "with open('time.txt', 'a') as outfile:",
+            "\toutfile.write(f'{dt_string}: starting optimization of initial state ...\\n')",
+            "slab = read('./optimized_structures/initial.traj')",
+            "slab.set_calculator(copy.deepcopy(ase_calculator))",
+            "qn = BFGS(slab, trajectory='initial.traj')",
+            f"qn.run(fmax={abs(float(self.incar.tags['ediffg']))})",
+            "shutil.copy('./initial.traj', './optimized_structures/initial.traj')",
+            " ",
+            # Final state optimization
+            "# Optimize final state:",
+            "now = datetime.now()",
+            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
+            "with open('time.txt', 'a') as outfile:",
+            "\toutfile.write(f'{dt_string}: starting optimization of final state ...\\n')",
+            "slab = read('./optimized_structures/final.traj')",
+            "slab.set_calculator(copy.deepcopy(ase_calculator))",
+            "qn = BFGS(slab, trajectory='final.traj')",
+            f"qn.run(fmax={abs(float(self.incar.tags['ediffg']))})",
+            "shutil.copy('./final.traj', './optimized_structures/final.traj')",
+            " ",
+            # NEB
+            "now = datetime.now()",
+            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
+            "with open('time.txt', 'a') as outfile:",
+            "\toutfile.write(f'{dt_string}: starting ML-NEB ...\\n')",
+            "neb_catlearn = MLNEB(start='initial.traj', end='final.traj',",
+            "\tase_calc=copy.deepcopy(ase_calculator),",
+            f"\tn_images={self.incar.tags['n_images']},",
+            "\tinterpolation='idpp',",
+            "\t#restart=True,",
+            "\t)",
+            f"neb_catlearn.run(fmax={self.incar.tags['fmax']}, trajectory='ML-NEB.traj')",
+            " ",
+            # Print results
+            "now = datetime.now()",
+            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
+            "with open('time.txt', 'a') as outfile:",
+            "\toutfile.write(f'{dt_string}: ML-NEB finished\\n')",
+            " ",
+            "from catlearn.optimize.tools import plotneb",
+            "plotneb(trajectory='ML-NEB.traj', view_path=True)"
+        ]
+        with open(f"{self.path}/{name_ase_script}", 'w') as outfile:
+            for line in ase_script:
+                outfile.write(line + '\n')
 
     def run_vibrations_ase(self):
+        # todo: not tested
         ts = io.read(f"{self.path}/ML-NEB.traj", index=np.argmax(self.energies))
         io.write(f"{self.path}/ts.traj", ts)  # optional
         with open(f"{self.path}/{name_ase_script}", "r") as infile:
@@ -452,25 +453,29 @@ class NebML:
                 outfile.write(line)
         os.chdir(f"{self.path}/vibrations")
         os.system(f'cp ../{name_submission_script} .')
-        os.system(f'qsub -N vib_{self.name} {name_submission_script}')
+        self.submit(path=f"{self.path}/vibrations", name=f"vib_{self.name}")
         os.chdir(init_dir)
 
     def run_vibrations_native(self, submission_script):
         """ Much faster than using ase.vibrations """
-        ts = io.read(f"{self.path}/ML-NEB.traj", index=np.argmax(self.energies))
-        c = FixAtoms(indices=list(range(len(ts)-self.num_atoms_adsorbate)))
-        ts.set_constraint(c)
-        incar = Incar.from_file(path=self.path)
-        incar.update_tag(key='IBRION', value='5')
-        incar.update_tag(key='POTIM', value='0.03')
-        incar.remove_tag(key='NPAR')
-        kpoints = Kpoints.from_file(path=self.path)
-        job = NewJobNative(
-            path=f"{self.path}/vibrations",
-            incar=incar,
-            kpoints=kpoints,
-            atoms=ts,
-            submission_script=submission_script
-        )
-        job.create_job_dir()
-
+        if len(self.energies) > 0:
+            ts = io.read(f"{self.path}/ML-NEB.traj", index=np.argmax(self.energies))
+            c = FixAtoms(indices=list(range(len(ts) - self.num_atoms_adsorbate)))
+            ts.set_constraint(c)
+            incar = Incar.from_file(path=self.path)
+            incar.update_tag(key='IBRION', value='5')
+            incar.update_tag(key='POTIM', value='0.03')
+            incar.remove_tag(key='NPAR')
+            kpoints = Kpoints.from_file(path=self.path)
+            job = NewJobNative(
+                path=f"{self.path}/vibrations",
+                incar=incar,
+                kpoints=kpoints,
+                atoms=ts,
+                potcars_dir=potcars_dir_cluster
+            )
+            job.create_job_dir()
+            os.system(f"cp {path_submission_script_freq_native}/{name_submission_script} {self.path}/vibrations")
+            self.submit(path=f"{self.path}/vibrations", name=f"vib_{self.name}")
+        else:
+            print(f"{self.name}: can't run vibrations, energy array is empty")

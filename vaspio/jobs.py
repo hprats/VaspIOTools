@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 from glob import glob
 import json
@@ -9,6 +10,8 @@ from vaspio.incar import Incar
 from vaspio.kpoints import Kpoints
 from vaspio.variables import *
 
+from cluster_data import *
+
 
 class NewJobNative:
     """A class that represents a new VASP job.
@@ -18,7 +21,6 @@ class NewJobNative:
         incar (vaspio.Incar): An object that represents an INCAR file.
         kpoints (vaspio.Kpoints): An object that represents a KPOINTS file
         atoms (ase.atoms.Atoms): An ASE Atoms object that contains the geometry for the system
-        submission_script (list): A list of strings. Each element represents a line of the submission script.
 
     Examples:
         >>> tags = {'IBRION': 1, 'EDIFF': 1E-05, 'EDIFFG': -0.01}
@@ -32,19 +34,18 @@ class NewJobNative:
         >>>    path='/home/test/N2_gas',
         >>>    incar=Incar(tags),
         >>>    kpoints=Kpoints(numbers=[1, 1, 1]),
-        >>>    atoms=ase.atoms.Atoms('N2', [(0, 0, 0), (0, 0, 1.12)],
-        >>>    submission_script=[submission_script]
+        >>>    atoms=ase.atoms.Atoms('N2', [(0, 0, 0), (0, 0, 1.12)]
         >>> )
     """
 
-    def __init__(self, path, incar, kpoints, atoms, submission_script):
+    def __init__(self, path, incar, kpoints, atoms, potcars_dir=potcars_dir_local):
         if isinstance(path, str):
             self.path = path
             self.name = path.split('/')[-1]
             self.incar = incar
             self.kpoints = kpoints
             self.atoms = atoms
-            self.submission_script = submission_script
+            self.potcars_dir = potcars_dir
 
     def create_job_dir(self):
         """Creates a new directory, with the name job_name, and writes there the VASP input files
@@ -55,15 +56,8 @@ class NewJobNative:
             self.kpoints.write(self.path)
             self.atoms.write(filename=f'{self.path}/POSCAR', vasp5=True)
             self.write_potcar()
-            self.write_submission_script()
         else:
             print(f'{self.path} already exists (nothing done)')
-
-    def write_submission_script(self):
-        """Prints the submission script into a new file named vasp_sub"""
-        with open(f"{self.path}/{name_submission_script}", 'w') as infile:
-            for line in self.submission_script:
-                infile.write(line + '\n')
 
     def write_potcar(self):
         """Writes the POTCAR file to the current directory
@@ -77,7 +71,7 @@ class NewJobNative:
                 current_element = element
         cmd = 'cat'
         for element in elements_for_potcar:
-            cmd += f' {potcars_dir}/{project_PP_dict[element]}/POTCAR'
+            cmd += f' {self.potcars_dir}/{project_PP_dict[element]}/POTCAR'
         os.system(f'{cmd} > {self.path}/POTCAR')
 
 
@@ -132,17 +126,6 @@ class JobNative:
             job = cls(path=path, incar=incar, energy=energy, status=status, magmom=magmom)
             return job
 
-    def read_incar(self):
-        """Read INCAR file and store its information as a Incar object"""
-        with open(f'{self.path}/INCAR') as infile:
-            lines = infile.readlines()
-        incar_tags = {}
-        for line in lines:
-            tag = line.strip().split(' = ')[0]
-            value = line.strip().split(' = ')[1]
-            incar_tags[tag] = value
-        return Incar(incar_tags)
-
     def get_energy_oszicar(self):
         energy = None
         with open(f"{self.path}/OSZICAR") as infile:
@@ -171,7 +154,7 @@ class JobNative:
     def read_from_cluster(cls, path):
         """Don't need to read POSCAR and CONTCAR, since they won't be written to JSON"""
         job = cls(path=path)
-        job.incar = job.read_incar()
+        job.incar = Incar.from_file(path=path)
         job.status = job.get_job_status()
         if job.status == 'fine':
             job.energy = job.get_energy_oszicar()
@@ -254,30 +237,23 @@ class JobNative:
         else:
             return False
 
-    def vasp_bin_not_loaded(self):  # if this doesnt work, check other version in jobwp2.py
+    def vasp_bin_not_loaded(self):
         try:
-            std_error_file = glob(f"{self.path}/*.e*")[0]
-            return 'cannot be loaded' in str(subprocess.check_output(f"tail {std_error_file}", shell=True))
+            if job_scheduler == 'sge':
+                std_error_file = glob(f"{self.path}/*.e*")[0]
+                return 'cannot be loaded' in str(subprocess.check_output(f"tail {std_error_file}", shell=True))
+            elif job_scheduler == 'slurm':
+                std_error_file = glob(f"{self.path}/slurm-*.out")[0]
+                return 'mpirun: command not found' in str(subprocess.check_output(f"tail {std_error_file}", shell=True))
+            else:
+                sys.exit('Invalid job_scheduler')
         except subprocess.CalledProcessError:
             return False
-
-    def check_queue(self, qstat_list):
-        in_queue = False
-        status = None
-        for line in qstat_list:
-            job_name = line.split()[2]
-            if job_name == self.name:
-                in_queue = True
-                status = line.split()[4]
-                break
-        return in_queue, status
 
     def get_job_status(self):
         """Execute it on the cluster."""
         """If modified here, modify also in vasp_tools.py."""
-        with open(f'{path_qstat_list}/qstat_list.txt') as infile:
-            qstat_list = infile.readlines()
-        in_queue, status = self.check_queue(qstat_list)
+        in_queue, status = check_queue(job_name=self.name)
         if in_queue:
             job_status = status
         elif os.path.isfile(f"{self.path}/README"):
@@ -290,58 +266,64 @@ class JobNative:
             job_status = 'not submitted'
         elif self.converged():
             job_status = 'fine'
+        elif self.vasp_bin_not_loaded():
+            job_status = 'VASP bin not loaded'
+        elif self.bracketing_error():
+            if self.get_dE_last_two_steps() <= 0.01:
+                job_status = 'fine'
+            else:
+                job_status = 'bracketing'
+        elif self.core():
+            job_status = 'core files generated'
+        elif self.bad_termination():
+            if self.get_dE_last_two_steps() <= 0.01:
+                job_status = 'fine'
+            else:
+                job_status = 'bad termination'
+        elif self.nsw_reached():
+            job_status = 'NSW reached'
+        elif self.nelm_reached():
+            job_status = 'max wallclock, NELM reached'
         elif not os.path.isfile(f"{self.path}/OSZICAR"):
             job_status = 'error'
+        elif self.other_error():
+            job_status = 'error'
         else:
-            if self.vasp_bin_not_loaded():
-                job_status = 'VASP bin not loaded'
-            elif self.bracketing_error():
-                if self.get_dE_last_two_steps() <= 0.01:
-                    job_status = 'fine'
-                else:
-                    job_status = 'bracketing'
-            elif self.core():
-                job_status = 'core files generated'
-            elif self.bad_termination():
-                if self.get_dE_last_two_steps() <= 0.01:
-                    job_status = 'fine'
-                else:
-                    job_status = 'bad termination'
-            elif self.nsw_reached():
-                job_status = 'NSW reached'
-            elif self.nelm_reached():
-                job_status = 'max wallclock, NELM reached'
-            elif self.other_error():
-                job_status = 'error'
-            else:
-                job_status = 'max wallclock'
+            job_status = 'max wallclock'
         return job_status
 
     def rm_vasp_outputs(self):
         files_list = [f for f in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, f))]
         for file in files_list:
-            if file not in ['INCAR', 'POSCAR', 'KPOINTS', 'POTCAR', 'vasp_native', 'submitted']:
+            if file not in ['INCAR', 'POSCAR', 'KPOINTS', 'POTCAR', name_ase_script, name_submission_script]:
                 os.remove(f"{self.path}/{file}")
 
-    def restart(self):
-        init_dir = os.getcwd()  # does not conflict with external variables with same name
-        self.rm_vasp_outputs()
-        os.chdir(self.path)
-        os.system(f'qsub -N {self.name} vasp_native')
+    @staticmethod
+    def submit(path, name):
+        init_dir = os.getcwd()
+        os.chdir(path)
+        if job_scheduler == 'sge':
+            os.system(f'qsub -N {name} {name_submission_script}')
+        elif job_scheduler == 'slurm':
+            os.system(f'sbatch --job-name {name} {name_submission_script}')
+        else:
+            sys.exit('Invalid job_scheduler')
         os.chdir(init_dir)
 
+    def restart(self):
+        self.rm_vasp_outputs()
+        self.submit(path=self.path, name=self.name)
+
     def refine(self, dict_new_tags):
-        init_dir = os.getcwd()
-        os.chdir(self.path)
-        num_previous_refines = str(len(glob('ref*/')))
+        num_previous_refines = str(len(glob(f'{self.path}/ref*/')))
         if self.empty_contcar():
             print(f'CHECK: Cannot refine {self.name}: empty CONTCAR')
         else:
-            os.system(f'mkdir ref{num_previous_refines}; cp * ref{num_previous_refines}; cp CONTCAR POSCAR')
+            os.system(f"mkdir {self.path}/ref{num_previous_refines}")
+            os.system(f"cp {self.path}/* {self.path}/ref{num_previous_refines}")
+            os.system(f"cp {self.path}/CONTCAR {self.path}/POSCAR")
             self.rm_vasp_outputs()
             for tag in dict_new_tags:
                 self.incar.update_tag(key=tag, value=dict_new_tags[tag])
                 self.incar.write(self.path)
-            os.system(f'qsub -N {self.name} vasp_native')
-        os.chdir(init_dir)
-
+            self.submit(path=self.path, name=self.name)
