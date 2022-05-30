@@ -352,11 +352,11 @@ class NebML:
         ]
         for tag in [tag for tag in self.incar.tags if tag not in ['ediffg', 'n_images', 'fmax']]:
             ase_script.append(f"\t{tag}={self.incar.tags[tag]},")
-        ase_script += [f"\tnpar={npar},",
-                       "\t# Kpoints",
+        ase_script += ["\t# Kpoints",
                        f"\tkpts=({self.kpoints.num_x}, {self.kpoints.num_y}, {self.kpoints.num_z}),",
                        f"\tgamma=True,",
                        "\t)",
+                       " ",
                        ]
         ase_script += [
             # Initial state optimization
@@ -384,6 +384,7 @@ class NebML:
             "shutil.copy('./final.traj', './optimized_structures/final.traj')",
             " ",
             # NEB
+            "# Run ML-NEB:",
             "now = datetime.now()",
             "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
             "with open('time.txt', 'a') as outfile:",
@@ -397,6 +398,7 @@ class NebML:
             f"neb_catlearn.run(fmax={self.incar.tags['fmax']}, trajectory='ML-NEB.traj')",
             " ",
             # Print results
+            "# Print results:",
             "now = datetime.now()",
             "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')",
             "with open('time.txt', 'a') as outfile:",
@@ -456,7 +458,7 @@ class NebML:
         self.submit(path=f"{self.path}/vibrations", name=f"vib_{self.name}")
         os.chdir(init_dir)
 
-    def run_vibrations_native(self, submission_script):
+    def run_vibrations_native(self):
         """ Much faster than using ase.vibrations """
         if len(self.energies) > 0:
             ts = io.read(f"{self.path}/ML-NEB.traj", index=np.argmax(self.energies))
