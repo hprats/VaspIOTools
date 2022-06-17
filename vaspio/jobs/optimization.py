@@ -6,8 +6,8 @@ import json
 
 import ase.neb
 
-from vaspio.incar import Incar
-from vaspio.kpoints import Kpoints
+from vaspio.input_files.incar import Incar
+from vaspio.input_files.kpoints import Kpoints
 from vaspio.variables import *
 
 from cluster_data import *

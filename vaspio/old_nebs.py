@@ -8,6 +8,7 @@ import json
 import ase.neb
 from ase import io
 from ase.constraints import FixAtoms
+from pymatgen.io.ase import AseAtomsAdaptor
 
 from vaspio.variables import *
 from vaspio.incar import Incar
@@ -179,10 +180,13 @@ class NebML:
             return job
 
     def get_energies(self):
-        images = io.read(f"{self.path}/ML-NEB.traj", index=":")
-        energies = np.zeros(len(images))
-        for i in range(len(images)):
-            energies[i] = images[i].get_potential_energy()
+        if os.path.isfile(f"{self.path}/ML-NEB.traj"):
+            images = io.read(f"{self.path}/ML-NEB.traj", index=":")
+            energies = np.zeros(len(images))
+            for i in range(len(images)):
+                energies[i] = images[i].get_potential_energy()
+        else:
+            energies = None
         return energies
 
     def get_vibrations(self):
@@ -197,11 +201,12 @@ class NebML:
     @classmethod
     def read_from_cluster(cls, path, num_atoms_adsorbate):
         job = cls(path=path, num_atoms_adsorbate=num_atoms_adsorbate)
-        job.incar = Incar.from_file(path=path)
-        job.kpoints = Kpoints.from_file(path=path)
+        if os.path.isfile(f"{job.path}/INCAR"):
+            job.incar = Incar.from_file(path=path)
+        if os.path.isfile(f"{job.path}/KPOINTS"):
+            job.kpoints = Kpoints.from_file(path=path)
+        job.energies = job.get_energies()
         job.status = job.get_job_status()
-        if job.status in ['done', 'NEB converged', 'not TS']:
-            job.energies = job.get_energies()
         return job
 
     def NEB_converged(self):
@@ -237,10 +242,10 @@ class NebML:
         if np.argmax(self.energies) == 0 or np.argmax(self.energies) == len(self):
             return True
         for i in range(1, np.argmax(self.energies)):
-            if self.energies[i] < self.energies[0]:
+            if self.energies[i] + 0.20 < self.energies[0]:
                 return True
         for i in range(np.argmax(self.energies) + 1, -1):
-            if self.energies[i] < self.energies[-1]:
+            if self.energies[i] + 0.20 < self.energies[-1]:
                 return True
         return False
 
@@ -262,16 +267,18 @@ class NebML:
         elif os.path.isdir(f"{self.path}/vibrations"):
             if self.freq_done():
                 if self.is_ts():
-                    job_status = 'done'
+                    if self.new_minimum():
+                        job_status = 'done (new minimum)'
+                    else:
+                        job_status = 'done'
                 else:
                     job_status = 'not TS'
             else:
                 job_status = 'vibrations not converged'
         elif self.NEB_converged():
-            if self.new_minimum():
-                job_status = 'new minimum'
-            else:
-                job_status = 'NEB converged'
+            job_status = 'NEB converged'
+        elif not os.path.isfile(f"{self.path}/results_neb.csv"):
+            job_status = 'results_neb.csv not found; maybe initial.traj not optimized?'
         else:
             job_status = 'max wallclock'
         return job_status
@@ -460,6 +467,7 @@ class NebML:
 
     def run_vibrations_native(self):
         """ Much faster than using ase.vibrations """
+        #todo: add if for neb or dimer
         if len(self.energies) > 0:
             ts = io.read(f"{self.path}/ML-NEB.traj", index=np.argmax(self.energies))
             c = FixAtoms(indices=list(range(len(ts) - self.num_atoms_adsorbate)))
@@ -481,3 +489,60 @@ class NebML:
             self.submit(path=f"{self.path}/vibrations", name=f"vib_{self.name}")
         else:
             print(f"{self.name}: can't run vibrations, energy array is empty")
+
+    def get_displacement_vector(self):
+        line_start = 0
+        i = 0
+        with open(f"{self.path}/vibrations/OUTCAR", 'r') as infile:
+            lines = infile.readlines()
+        # Find start of imaginary vibration output
+        for i in range(len(lines) - 1, 0, -1):
+            if ' f/i= ' in lines[i]:
+                line_start = i + 2
+                break
+        # Get length of imaginary vibration
+        line = lines[i + 2]
+        num_displacements = 0
+        while line != ' \n':
+            num_displacements += 1
+            i += 1
+            line = lines[i + 2]
+        # Save vibration to numpy array
+        displacement_vector = np.zeros((num_displacements, 3))
+        for i in range(num_displacements):
+            line = lines[line_start + i]
+            displacement_vector[i][0] = line.split()[-3]
+            displacement_vector[i][1] = line.split()[-2]
+            displacement_vector[i][2] = line.split()[-1]
+        return displacement_vector
+
+    def run_dimer_vtst(self, ediffg=-0.02):
+        ts = io.read(f"{self.path}/ML-NEB.traj", index=np.argmax(self.energies))
+        incar = Incar.from_file(path=self.path)
+        incar.update_tag(key='IBRION', value=3)
+        incar.update_tag(key='POTIM', value=0)
+        incar.add_tag(key='NSW', value=600)
+        incar.add_tag(key='IOPT', value=2)
+        incar.add_tag(key='ICHAIN', value=2)
+        incar.add_tag(key='EDIFFG', value=ediffg)
+        slab_pmg = AseAtomsAdaptor().get_structure(ts)
+        job = NewJobNative(
+            path=f"{self.path}/vibrations/dimer",
+            incar=incar,
+            kpoints=Kpoints(density=60, lat_x=slab_pmg.lattice.a, lat_y=slab_pmg.lattice.b),
+            atoms=ts,
+            potcars_dir=potcars_dir_cluster
+        )
+        job.create_job_dir()
+        self.create_modecar()
+        os.system(f"cp {path_submission_script_vtst_native}/{name_submission_script} {self.path}/vibrations/dimer")
+        self.submit(path=f"{self.path}/vibrations/dimer", name=f"{self.name}")
+
+    def create_modecar(self):
+        displacement_vector = self.get_displacement_vector()
+        with open(f"{self.path}/vibrations/dimer/MODECAR", 'w') as outfile:
+            for i in range(len(displacement_vector)):
+                outfile.write(f"{displacement_vector[i][0]} {displacement_vector[i][1]} {displacement_vector[i][2]}\n")
+
+
+
