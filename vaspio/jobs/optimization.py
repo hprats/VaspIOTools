@@ -92,8 +92,8 @@ class JobNative:
 
     def __init__(self, path, incar=None, energy=None, status=None, magmom=None):
 
-        self.name = path.split('/')[-1]
         self.path = path
+        self.name = path.split('/')[-1]
         self.energy = energy
         self.status = status
         self.magmom = magmom
@@ -155,8 +155,9 @@ class JobNative:
         """Don't need to read POSCAR and CONTCAR, since they won't be written to JSON"""
         job = cls(path=path)
         job.incar = Incar.from_file(path=path)
+        job.kpoints = Kpoints.from_file(path=path)
         job.status = job.get_job_status()
-        if job.status == 'fine':
+        if job.status == 'converged':
             job.energy = job.get_energy_oszicar()
             job.magmom = job.get_magmom()
         return job
@@ -201,31 +202,9 @@ class JobNative:
         else:
             return False
 
-    def core(self):
-        if len(glob(f'{self.path}/core.*')) > 0:
-            return True
-        else:
-            return False
-
     def bad_termination(self):
         output = str(subprocess.check_output(f"tail -n10 {self.path}/{name_std_output}", shell=True))
         if 'BAD TERMINATION' in output:
-            return True
-        else:
-            return False
-
-    def empty_poscar(self):
-        file = open(f"{self.path}/POSCAR")
-        lines = [line for line in file]
-        if len(lines) == 0:
-            return True
-        else:
-            return False
-
-    def empty_contcar(self):
-        file = open(f"{self.path}/CONTCAR")
-        lines = [line for line in file]
-        if len(lines) == 0:
             return True
         else:
             return False
@@ -260,24 +239,24 @@ class JobNative:
             with open(f"{self.path}/README") as f:
                 readme_info = f.readlines()[0].strip()
             job_status = f'README: {readme_info}'
-        elif self.empty_poscar():
+        elif os.path.getsize(f'{self.path}/POSCAR') == 0:
             job_status = 'empty poscar'
         elif not os.path.isfile(f"{self.path}/{name_std_output}"):
             job_status = 'not submitted'
         elif self.converged():
-            job_status = 'fine'
+            job_status = 'converged'
         elif self.vasp_bin_not_loaded():
             job_status = 'VASP bin not loaded'
         elif self.bracketing_error():
             if self.get_dE_last_two_steps() <= 0.01:
-                job_status = 'fine'
+                job_status = 'converged'
             else:
                 job_status = 'bracketing'
-        elif self.core():
-            job_status = 'core files generated'
+        elif len(glob(f'{self.path}/core.*')) > 0:
+            job_status = 'core file'
         elif self.bad_termination():
             if self.get_dE_last_two_steps() <= 0.01:
-                job_status = 'fine'
+                job_status = 'converged'
             else:
                 job_status = 'bad termination'
         elif self.nsw_reached():
@@ -298,32 +277,32 @@ class JobNative:
             if file not in ['INCAR', 'POSCAR', 'KPOINTS', 'POTCAR', name_ase_script, name_submission_script]:
                 os.remove(f"{self.path}/{file}")
 
-    @staticmethod
-    def submit(path, name):
+    def submit(self, dict_new_tags=None):
+        self.rm_vasp_outputs()
+        if dict_new_tags is not None:  # e.g. re-submit with ALGO = Normal when NELM is reached
+            for tag in dict_new_tags:
+                self.incar.update_tag(key=tag, value=dict_new_tags[tag])
+            self.incar.write(self.path)
         init_dir = os.getcwd()
-        os.chdir(path)
+        os.chdir(self.path)
         if job_scheduler == 'sge':
-            os.system(f'qsub -N {name} {name_submission_script}')
+            os.system(f'qsub -N {self.name} {name_submission_script}')
         elif job_scheduler == 'slurm':
-            os.system(f'sbatch --job-name {name} {name_submission_script}')
+            os.system(f'sbatch --job-name {self.name} {name_submission_script}')
         else:
             sys.exit('Invalid job_scheduler')
         os.chdir(init_dir)
 
-    def restart(self):
-        self.rm_vasp_outputs()
-        self.submit(path=self.path, name=self.name)
-
-    def refine(self, dict_new_tags):
+    def restart(self, dict_new_tags=None):
         num_previous_refines = str(len(glob(f'{self.path}/ref*/')))
-        if self.empty_contcar():
+        if os.path.getsize(f'{self.path}/CONTCAR') == 0:
             print(f'CHECK: Cannot refine {self.name}: empty CONTCAR')
         else:
             os.system(f"mkdir {self.path}/ref{num_previous_refines}")
             os.system(f"cp {self.path}/* {self.path}/ref{num_previous_refines}")
             os.system(f"cp {self.path}/CONTCAR {self.path}/POSCAR")
-            self.rm_vasp_outputs()
-            for tag in dict_new_tags:
-                self.incar.update_tag(key=tag, value=dict_new_tags[tag])
+            if dict_new_tags is not None:
+                for tag in dict_new_tags:
+                    self.incar.update_tag(key=tag, value=dict_new_tags[tag])
                 self.incar.write(self.path)
-            self.submit(path=self.path, name=self.name)
+            self.submit()

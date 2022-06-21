@@ -139,6 +139,7 @@ class NebML:
         self.incar = None
         self.kpoints = None
         self.energies = None
+        self.status = None
 
     def get_energies(self):
         if os.path.isfile(f"{self.path}/ML-NEB.traj"):
@@ -163,9 +164,9 @@ class NebML:
             job.incar = Incar.from_file(path=path)
         if os.path.isfile(f"{job.path}/KPOINTS"):
             job.kpoints = Kpoints.from_file(path=path)
+        job.energies = job.get_energies()
         job.status = job.get_job_status()
         if 'converged' in job.status:
-            job.energies = job.get_energies()
             job.energy_barrier = job.get_energy_barrier()
         return job
 
@@ -173,33 +174,25 @@ class NebML:
         return 'Energy barrier' in \
                str(subprocess.check_output(f"tail -n4 {self.path}/{name_std_output}", shell=True))
 
-    def empty_file(self):
-        if os.path.isfile(f"{self.path}/initial.traj"):
-            try:
-                with open(f"{self.path}/initial.traj", "r") as infile:
-                    lines = infile.readlines()
-                return True
-            except UnicodeDecodeError:
-                return False
-        if os.path.isfile(f"{self.path}/final.traj"):
-            try:
-                with open(f"{self.path}/final.traj", "r") as infile:
-                    lines = infile.readlines()
-                return True
-            except UnicodeDecodeError:
-                return False
-        return False
-
     def new_minimum(self):
         if np.argmax(self.energies) == 0 or np.argmax(self.energies) == len(self.energies):
             return True
         for i in range(1, np.argmax(self.energies)):
             if self.energies[i] + 0.20 < self.energies[0]:
                 return True
-        for i in range(np.argmax(self.energies) + 1, -1):
+        for i in range(np.argmax(self.energies) + 1, len(self.energies) - 1):
             if self.energies[i] + 0.20 < self.energies[-1]:
                 return True
         return False
+
+    def get_num_occurrences_timetxt(self, occurrence="ML-NEB"):
+        with open(f"{self.path}/time.txt", "r") as infile:
+            lines = infile.readlines()
+        num_occurrences = 0
+        for line in lines:
+            if occurrence in line:
+                num_occurrences += 1
+        return num_occurrences
 
     def get_job_status(self):
         """Execute it on the cluster."""
@@ -212,7 +205,7 @@ class NebML:
             job_status = f'README: {readme_info}'
         elif len(glob(f'{self.path}/core.*')) > 0:
             job_status = 'core file'  # see std error
-        elif self.empty_file():
+        elif os.path.getsize(f'{self.path}/initial.traj') == 0 or os.path.getsize(f'{self.path}/final.traj') == 0:
             job_status = 'empty initial.traj or final.traj'
         elif not os.path.isfile(f"{self.path}/{name_std_output}"):
             job_status = 'not submitted'
@@ -221,8 +214,10 @@ class NebML:
                 job_status = 'converged (new minimum)'
             else:
                 job_status = 'converged'
-        elif not os.path.isfile(f"{self.path}/results_neb.csv"):
-            job_status = 'results_neb.csv not found'  # maybe initial.traj not optimized?
+        elif self.get_num_occurrences_timetxt(occurrence="final state") == 0:
+            job_status = 'initial state'
+        elif self.get_num_occurrences_timetxt(occurrence="ML-NEB") == 0:
+            job_status = 'final state'
         else:
             job_status = 'max wallclock'
         return job_status
@@ -238,45 +233,140 @@ class NebML:
             sys.exit('Invalid job_scheduler')
         os.chdir(init_dir)
 
+    @staticmethod
+    def get_import_lines():
+        lines = [
+            "from ase.io import read\n",
+            "from ase.optimize import BFGS\n",
+            "from ase.calculators.vasp import Vasp\n",
+            "import shutil\n",
+            "import copy\n",
+            "from catlearn.optimize.mlneb import MLNEB\n",
+            "from datetime import datetime\n",
+            " \n"
+        ]
+        return lines
+
+    @staticmethod
+    def get_calculator_lines(lines):
+        index_start = 0
+        index_end = 0
+        for i, line in enumerate(lines):
+            if "ase_calculator = " in line:
+                index_start = i
+            if "# Kpoints" in line:
+                index_end = i + 5
+        return lines[index_start:index_end]
+
+    @staticmethod
+    def get_initial_lines(lines):
+        index_fmax = lines.index("shutil.copy('./initial.traj', './optimized_structures/initial.traj')\n") - 1
+        fmax = lines[index_fmax].split("=")[1].split(")")[0]
+        lines = [
+            "# Optimize initial state:\n",
+            "now = datetime.now()\n",
+            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')\n",
+            "with open('time.txt', 'a') as outfile:\n",
+            "\toutfile.write(f'{dt_string}: starting optimization of initial state ...\\n')\n",
+            "slab = read('./initial.traj')\n",
+            "slab.set_calculator(copy.deepcopy(ase_calculator))\n",
+            "qn = BFGS(slab, trajectory='initial.traj')\n",
+            f"qn.run(fmax={fmax})\n",
+            "shutil.copy('./initial.traj', './optimized_structures/initial.traj')\n",
+            " \n"
+        ]
+        return lines
+
+    @staticmethod
+    def get_final_lines(lines, restart=False):
+        index_fmax = lines.index("shutil.copy('./final.traj', './optimized_structures/final.traj')\n") - 1
+        fmax = lines[index_fmax].split("=")[1].split(")")[0]
+        lines = [
+            "# Optimize final state:\n",
+            "now = datetime.now()\n",
+            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')\n",
+            "with open('time.txt', 'a') as outfile:\n",
+            "\toutfile.write(f'{dt_string}: starting optimization of final state ...\\n')\n"
+        ]
+        if restart:
+            lines += ["slab = read('./final.traj')\n"]
+        else:
+            lines += ["slab = read('./optimized_structures/final.traj')\n"]
+        lines += [
+            "slab.set_calculator(copy.deepcopy(ase_calculator))\n",
+            "qn = BFGS(slab, trajectory='final.traj')\n",
+            f"qn.run(fmax={fmax})\n",
+            "shutil.copy('./final.traj', './optimized_structures/final.traj')\n",
+            " \n"
+        ]
+        return lines
+
+    @staticmethod
+    def get_MLneb_lines(lines, restart=False):
+        index_n_images = lines.index("neb_catlearn = MLNEB(start='initial.traj', end='final.traj',\n") + 2
+        n_images = lines[index_n_images].split("=")[1].split(",")[0]
+        index_fmax = lines.index("neb_catlearn = MLNEB(start='initial.traj', end='final.traj',\n") + 6
+        fmax = lines[index_fmax].split("=")[1].split(",")[0]
+        lines = [
+            "# Run ML-NEB:\n",
+            "now = datetime.now()\n",
+            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')\n",
+            "with open('time.txt', 'a') as outfile:\n",
+            "\toutfile.write(f'{dt_string}: starting ML-NEB ...\\n')\n",
+            "neb_catlearn = MLNEB(start='initial.traj', end='final.traj',\n",
+            "\tase_calc=copy.deepcopy(ase_calculator),\n",
+            f"\tn_images={n_images},\n",
+            "\tinterpolation='idpp',\n"
+        ]
+        if restart:
+            lines += ["\trestart=True,\n"]
+        else:
+            lines += ["\t#restart=True,\n"]
+        lines += [
+            "\t)\n",
+            f"neb_catlearn.run(fmax={fmax}, trajectory='ML-NEB.traj')\n",
+            " \n"
+        ]
+        return lines
+
+    @staticmethod
+    def get_print_lines():
+        lines = [
+            "# Print results:\n",
+            "now = datetime.now()\n",
+            "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')\n",
+            "with open('time.txt', 'a') as outfile:\n",
+            "\toutfile.write(f'{dt_string}: ML-NEB finished\\n')\n",
+            " \n",
+            "from catlearn.optimize.tools import plotneb\n",
+            "plotneb(trajectory='ML-NEB.traj', view_path=True)\n"
+        ]
+        return lines
+
     def restart(self):
-        """ Continuation job"""
-        # Check if it was already a continuation job
-        continuation_job = True
-        with open(f"{self.path}/{name_ase_script}", "r") as infile:
-            lines = infile.readlines()
-        for line in lines:
-            if "Optimize initial state" in line:
-                continuation_job = False
-        if not continuation_job:
-            # Modify ase file
-            ase_script_lines = []
-            for i in range(len(lines)):
-                if 'now = datetime' in lines[i]:
-                    break
-                else:
-                    ase_script_lines.append(lines[i])
-            ase_script_lines += ["now = datetime.now()\n",
-                                 "dt_string = now.strftime('%d/%m/%Y %H:%M:%S')\n",
-                                 "with open('time.txt', 'a') as outfile:\n",
-                                 "\toutfile.write(f'{dt_string}: restarting job ...\\n')\n",
-                                 " \n"]
-            for i in range(len(lines)):
-                if 'ase_calculator' in lines[i]:
-                    while 'Optimize initial state' not in lines[i]:
-                        ase_script_lines.append(lines[i])
-                        i += 1
-                    break
-            for i in range(len(lines)):
-                if 'neb_catlearn' in lines[i]:
-                    for line in lines[i:]:
-                        ase_script_lines.append(line)
-                    break
-            for i in range(len(ase_script_lines)):
-                if "\t#restart=True," in ase_script_lines[i]:
-                    ase_script_lines[i] = "\trestart=True" + "\n"
-                    break
+        if self.status == "max wallclock" and self.get_num_occurrences_timetxt(occurrence="ML-NEB") > 1:
+            pass
+        else:
+            with open(f"{self.path}/run.py", "r") as infile:
+                lines = infile.readlines()
+            ase_script = self.get_import_lines()
+            ase_script += self.get_calculator_lines(lines=lines)
+            if self.status == "max wallclock":
+                ase_script += self.get_MLneb_lines(lines=lines, restart=True)
+                ase_script += self.get_print_lines()
+            elif self.status == "final state":
+                ase_script += self.get_final_lines(lines=lines, restart=True)
+                ase_script += self.get_MLneb_lines(lines=lines, restart=False)
+                ase_script += self.get_print_lines()
+            elif self.status == "initial state":
+                ase_script += self.get_initial_lines()
+                ase_script += self.get_final_lines(lines=lines, restart=False)
+                ase_script += self.get_MLneb_lines(lines=lines, restart=False)
+                ase_script += self.get_print_lines()
+            else:
+                sys.exit(f"{self.name}: ERROR, cannot determine where to restart the job, check manually")
             with open(f"{self.path}/{name_ase_script}", 'w') as outfile:
-                for line in ase_script_lines:
+                for line in ase_script:
                     outfile.write(line)
         self.submit()
 
