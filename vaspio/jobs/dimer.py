@@ -249,7 +249,6 @@ class DimerVTST:  # todo: continue from here
             os.system(f"cp {self.path}/* {self.path}/ref{num_previous_refines}")
             os.system(f"cp {self.path}/CENTCAR {self.path}/POSCAR")
             os.system(f"cp {self.path}/NEWMODECAR {self.path}/MODECAR")
-            self.rm_vasp_outputs()
             if dict_new_tags is not None:
                 for tag in dict_new_tags:
                     self.incar.update_tag(key=tag, value=dict_new_tags[tag])

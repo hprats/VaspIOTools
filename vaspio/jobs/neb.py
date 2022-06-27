@@ -205,8 +205,6 @@ class NebML:
             job_status = f'README: {readme_info}'
         elif len(glob(f'{self.path}/core.*')) > 0:
             job_status = 'core file'  # see std error
-        elif os.path.getsize(f'{self.path}/initial.traj') == 0 or os.path.getsize(f'{self.path}/final.traj') == 0:
-            job_status = 'empty initial.traj or final.traj'
         elif not os.path.isfile(f"{self.path}/{name_std_output}"):
             job_status = 'not submitted'
         elif self.converged():
@@ -218,6 +216,10 @@ class NebML:
             job_status = 'initial state'
         elif self.get_num_occurrences_timetxt(occurrence="ML-NEB") == 0:
             job_status = 'final state'
+        elif os.path.getsize(f'{self.path}/initial.traj') == 0:
+            job_status = 'empty initial.traj'
+        elif os.path.getsize(f'{self.path}/final.traj') == 0:
+            job_status = 'empty final.traj'
         else:
             job_status = 'max wallclock'
         return job_status
@@ -359,7 +361,7 @@ class NebML:
                 ase_script += self.get_MLneb_lines(lines=lines, restart=False)
                 ase_script += self.get_print_lines()
             elif self.status == "initial state":
-                ase_script += self.get_initial_lines()
+                ase_script += self.get_initial_lines(lines=lines)
                 ase_script += self.get_final_lines(lines=lines, restart=False)
                 ase_script += self.get_MLneb_lines(lines=lines, restart=False)
                 ase_script += self.get_print_lines()

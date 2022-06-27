@@ -1,7 +1,6 @@
 import os
 import sys
 import subprocess
-import json
 
 from ase.constraints import FixAtoms
 
@@ -73,7 +72,6 @@ class VibrationsNative:
 
     @classmethod
     def read_from_cluster(cls, path, name):
-        """Don't need to read POSCAR and CONTCAR, since they won't be written to JSON"""
         job = cls(path=path, name=name)
         job.incar = Incar.from_file(path=path)
         job.kpoints = Kpoints.from_file(path=path)
@@ -93,7 +91,6 @@ class VibrationsNative:
         return output.count('f/i')
 
     def get_job_status(self):
-        """Execute it on the cluster."""
         in_queue, status = check_queue(job_name=self.name)
         if in_queue:
             job_status = status
