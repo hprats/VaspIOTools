@@ -2,7 +2,7 @@ import os
 
 
 class Incar:
-    """A class that represents an INCAR file. UPDATE
+    """A class that represents an INCAR file.
 
     Attributes:
         tags (dict): a dictionary of INCAR tags.
