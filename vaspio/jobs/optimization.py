@@ -5,12 +5,13 @@ from glob import glob
 import json
 
 import ase.neb
+from ase.io import read
 
 from vaspio.input_files.incar import Incar
 from vaspio.input_files.kpoints import Kpoints
 from vaspio.variables import *
 
-from cluster_data import *
+from vaspio.cluster_data import *
 
 
 class NewJobNative:
@@ -38,14 +39,16 @@ class NewJobNative:
         >>> )
     """
 
-    def __init__(self, path, incar, kpoints, atoms, potcars_dir=potcars_dir_local):
+    # todo: update this so that in the future the custom PP_dict is not specified in variables.py and the default PP_dict is VASP_recommended_PP
+    def __init__(self, path, name, incar, kpoints, atoms, potcars_dir=potcars_dir_local, PP_dict=project_PP_dict):
         if isinstance(path, str):
             self.path = path
-            self.name = path.split('/')[-1]
+            self.name = name
             self.incar = incar
             self.kpoints = kpoints
             self.atoms = atoms
             self.potcars_dir = potcars_dir
+            self.PP_dict = PP_dict
 
     def create_job_dir(self):
         """Creates a new directory, with the name job_name, and writes there the VASP input files
@@ -71,8 +74,19 @@ class NewJobNative:
                 current_element = element
         cmd = 'cat'
         for element in elements_for_potcar:
-            cmd += f' {self.potcars_dir}/{project_PP_dict[element]}/POTCAR'
+            cmd += f' {self.potcars_dir}/{self.PP_dict[element]}/POTCAR'
         os.system(f'{cmd} > {self.path}/POTCAR')
+
+    def submit(self):
+        init_dir = os.getcwd()
+        os.chdir(self.path)
+        if job_scheduler == 'sge':
+            os.system(f'qsub -N {self.name} {name_submission_script}')
+        elif job_scheduler == 'slurm':
+            os.system(f'sbatch --job-name {self.name} {name_submission_script}')
+        else:
+            sys.exit('Invalid job_scheduler')
+        os.chdir(init_dir)
 
 
 class JobNative:
@@ -90,10 +104,10 @@ class JobNative:
         >>> print(job.energy)
     """
 
-    def __init__(self, path, incar=None, energy=None, status=None, magmom=None):
+    def __init__(self, path, name, incar=None, energy=None, status=None, magmom=None):
 
         self.path = path
-        self.name = path.split('/')[-1]
+        self.name = name
         self.energy = energy
         self.status = status
         self.magmom = magmom
@@ -123,8 +137,37 @@ class JobNative:
             status = dct['status']
             magmom = dct['magmom']
 
-            job = cls(path=path, incar=incar, energy=energy, status=status, magmom=magmom)
+            job = cls(path=path, name=path.split('/')[-1], incar=incar, energy=energy, status=status, magmom=magmom)
             return job
+
+    @classmethod
+    def read_from_cluster(cls, path, name):
+        job = cls(path=path, name=name)
+        job.incar = Incar.from_file(path=path)
+        job.kpoints = Kpoints.from_file(path=path)
+        job.status = job.get_job_status()
+        if job.status == 'converged':
+            job.energy = job.get_energy_oszicar()
+            job.magmom = job.get_magmom()
+        return job
+
+    @classmethod
+    def read_converged(cls, path, name):
+        """Read a converged calculation."""
+        job = cls(path=path, name=name)
+        job.incar = Incar.from_file(path=path)
+        job.kpoints = Kpoints.from_file(path=path)
+        job.atoms_poscar = read(f'{path}/POSCAR')
+        if os.path.isfile(f"{path}/CONTCAR"):
+            job.atoms_contcar = read(f'{path}/CONTCAR')
+        else:
+            print(f"{name}: no CONTCAR file")
+        if os.path.isfile(f"{path}/OSZICAR"):
+            job.energy = job.get_energy_oszicar()
+            job.magmom = job.get_magmom()
+        else:
+            print(f"{name}: no OSZICAR file")
+        return job
 
     def get_energy_oszicar(self):
         energy = None
@@ -149,18 +192,6 @@ class JobNative:
                         magmom = float(lines[i].split()[-1])
                         break
         return magmom
-
-    @classmethod
-    def read_from_cluster(cls, path):
-        """Don't need to read POSCAR and CONTCAR, since they won't be written to JSON"""
-        job = cls(path=path)
-        job.incar = Incar.from_file(path=path)
-        job.kpoints = Kpoints.from_file(path=path)
-        job.status = job.get_job_status()
-        if job.status == 'converged':
-            job.energy = job.get_energy_oszicar()
-            job.magmom = job.get_magmom()
-        return job
 
     def converged(self):
         if 'NSW' not in self.incar.tags:  # is SPE

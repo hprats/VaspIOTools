@@ -16,7 +16,7 @@ from vaspio.cluster_data import *  # If executed locally, this could be an empty
 class NewNebNative:
 
     def __init__(self, path, images, incar, kpoints, atoms_initial, atoms_final,
-                 energy_initial, energy_final):
+                 energy_initial, energy_final, potcars_dir=potcars_dir_local, PP_dict=project_PP_dict):
         if isinstance(path, str):
             self.path = path
             self.images = images
@@ -27,6 +27,8 @@ class NewNebNative:
             self.atoms_final = atoms_final
             self.energy_initial = energy_initial
             self.energy_final = energy_final
+            self.potcars_dir = potcars_dir
+            self.PP_dict = PP_dict
 
     def create_job_dir(self):
         """Creates a new directory, with the name job_name, and writes there the VASP input files
@@ -85,7 +87,7 @@ class NewNebNative:
                 current_element = element
         cmd = 'cat'
         for element in elements_for_potcar:
-            cmd += f' {potcars_dir_local}/{project_PP_dict[element]}/POTCAR'
+            cmd += f' {self.potcars_dir}/{self.PP_dict[element]}/POTCAR'
         os.system(f'{cmd} > {self.path}/POTCAR')
 
 
@@ -146,6 +148,11 @@ class NebML:
             energies = np.zeros(len(images))
             for i in range(len(images)):
                 energies[i] = images[i].get_potential_energy()
+        elif os.path.isfile(f"{self.path}/last_predicted_path.traj"):
+            images = io.read(f"{self.path}/last_predicted_path.traj", index=":")
+            energies = np.zeros(len(images))
+            for i in range(len(images)):
+                energies[i] = images[i].get_potential_energy()
         else:
             energies = None
         return energies
@@ -165,8 +172,7 @@ class NebML:
             job.kpoints = Kpoints.from_file(path=path)
         job.energies = job.get_energies()
         job.status = job.get_job_status()
-        if 'converged' in job.status:
-            job.energy_barrier = job.get_energy_barrier()
+        job.energy_barrier = job.get_energy_barrier()
         return job
 
     def converged(self):
@@ -389,7 +395,7 @@ class NebML:
             "\toutfile.write(f'{dt_string}: starting job ...\\n')",
             " ",
             # Ase calculator
-            "ase_calculator = Vasp(setups={'base': 'recommended', 'W': '_pv'},"
+            "ase_calculator = Vasp(setups={'base': 'recommended', 'W': '_pv'},"  # todo: udpate so that W_pw is not used by default
         ]
         for tag in [tag for tag in self.incar.tags if tag not in ['ediffg', 'n_images', 'fmax']]:
             ase_script.append(f"\t{tag}={self.incar.tags[tag]},")

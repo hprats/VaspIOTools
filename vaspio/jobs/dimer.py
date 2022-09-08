@@ -7,20 +7,20 @@ from glob import glob
 from vaspio.input_files.incar import Incar
 from vaspio.input_files.kpoints import Kpoints
 from vaspio.variables import *
-
-from cluster_data import *
+from vaspio.cluster_data import *
 
 
 class NewDimerVTST:
 
     def __init__(self, path, name, incar, kpoints, atoms, outcar_path=None, displacement_vector=None, nsw=500, ediffg=-0.01,
-                 potcars_dir=potcars_dir_local):
+                 potcars_dir=potcars_dir_local, PP_dict=project_PP_dict):
         self.path = path
         self.name = name
         self.incar = incar
         self.kpoints = kpoints
         self.atoms = atoms
         self.potcars_dir = potcars_dir
+        self.PP_dict = PP_dict
 
         incar.add_tag(key='ICHAIN', value=2)
         incar.update_tag(key='IBRION', value=3)
@@ -32,7 +32,7 @@ class NewDimerVTST:
 
         if displacement_vector is None:
             if outcar_path is None:
-                print(f" {self.name}: cant run Dimer, no displacement vector provided")
+                print(f" {self.name}: cannot run Dimer, no displacement vector provided")
             else:
                 self.displacement_vector = self.get_displacement_vector_from_outcar(path=outcar_path)
         else:
@@ -58,7 +58,7 @@ class NewDimerVTST:
                 current_element = element
         cmd = 'cat'
         for element in elements_for_potcar:
-            cmd += f' {self.potcars_dir}/{project_PP_dict[element]}/POTCAR'
+            cmd += f' {self.potcars_dir}/{self.PP_dict[element]}/POTCAR'
         os.system(f'{cmd} > {self.path}/POTCAR')
 
     def write_modecar(self):
@@ -79,11 +79,11 @@ class NewDimerVTST:
 
     @staticmethod
     def get_displacement_vector_from_outcar(path):
-        line_start = 0
-        i = 0
         with open(f"{path}/OUTCAR", 'r') as infile:
             lines = infile.readlines()
         # Find start of imaginary vibration output
+        line_start = 0
+        i = 0
         for i in range(len(lines) - 1, 0, -1):
             if ' f/i= ' in lines[i]:
                 line_start = i + 2
@@ -91,10 +91,12 @@ class NewDimerVTST:
         # Get length of imaginary vibration
         line = lines[i + 2]
         num_displacements = 0
-        while line != ' \n':
+        while 'Finite differences POTIM=' not in line:
             num_displacements += 1
             i += 1
             line = lines[i + 2]
+        # ignore white line at the end of displacements
+        num_displacements -= 1
         # Save vibration to numpy array
         displacement_vector = np.zeros((num_displacements, 3))
         for i in range(num_displacements):
@@ -105,7 +107,7 @@ class NewDimerVTST:
         return displacement_vector
 
 
-class DimerVTST:  # todo: continue from here
+class DimerVTST:
 
     def __init__(self, path, name, incar=None, energy=None, status=None):
 
@@ -203,7 +205,7 @@ class DimerVTST:  # todo: continue from here
         elif not os.path.isfile(f"{self.path}/{name_std_output}"):
             job_status = 'not submitted'
         elif self.converged():
-            job_status = 'fine'
+            job_status = 'converged'
         elif self.vasp_bin_not_loaded():
             job_status = 'VASP bin not loaded'
         elif len(glob(f'{self.path}/core.*')) > 0:

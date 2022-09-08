@@ -8,12 +8,13 @@ from vaspio.input_files.incar import Incar
 from vaspio.input_files.kpoints import Kpoints
 from vaspio.variables import *
 
-from cluster_data import *
+from vaspio.cluster_data import *
 
 
 class NewVibrationsNative:
 
-    def __init__(self, path, name, incar, kpoints, atoms, num_free_atoms, potim=0.03, potcars_dir=potcars_dir_local):
+    def __init__(self, path, name, incar, kpoints, atoms, num_free_atoms, potim=0.03, potcars_dir=potcars_dir_local,
+                 PP_dict=project_PP_dict):
         self.path = path
         self.name = name
         self.incar = incar
@@ -21,6 +22,7 @@ class NewVibrationsNative:
         self.atoms = atoms
         self.num_free_atoms = num_free_atoms
         self.potcars_dir = potcars_dir
+        self.PP_dict = PP_dict
 
         self.incar.update_tag(key='IBRION', value='5')
         self.incar.update_tag(key='POTIM', value=potim)
@@ -48,7 +50,7 @@ class NewVibrationsNative:
                 current_element = element
         cmd = 'cat'
         for element in elements_for_potcar:
-            cmd += f' {self.potcars_dir}/{project_PP_dict[element]}/POTCAR'
+            cmd += f' {self.potcars_dir}/{self.PP_dict[element]}/POTCAR'
         os.system(f'{cmd} > {self.path}/POTCAR')
 
     def submit(self):
