@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-potcars_dir_local = '/Users/hectorpratsgarcia/PycharmProjects/tmc4mpo/potpaw_PBE'
+potcars_dir_local = '/Users/install/PycharmProjects/tmc4mpo/potpaw_PBE'
 name_ase_script = 'run.py'
 name_submission_script = 'vasp_sub'
 name_std_output = 'vasp.out'

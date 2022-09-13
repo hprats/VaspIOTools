@@ -158,7 +158,10 @@ class NebML:
         return energies
 
     def get_energy_barrier(self):
-        return np.max(self.energies) - self.energies[0]
+        if self.energies is None:
+            return None
+        else:
+            return np.max(self.energies) - self.energies[0]
 
     def get_reaction_energy(self):
         return self.energies[-1] - self.energies[0]
