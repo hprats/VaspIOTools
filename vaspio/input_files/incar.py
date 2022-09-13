@@ -40,6 +40,7 @@ class Incar:
         """Add a new tag."""
         if key in self._tags:
             print(f"Tag {key} already exists, value: {self._tags[key]}")
+            print(f"Tag not added, use update_tag to modify an existing tag")
         else:
             self._tags[key] = value
 
