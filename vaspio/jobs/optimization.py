@@ -306,16 +306,18 @@ class JobNative:
     def rm_vasp_outputs(self):
         files_list = [f for f in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, f))]
         save_list = ['INCAR', 'POSCAR', 'KPOINTS', 'POTCAR', name_ase_script, name_submission_script]
-        if os.path.getsize(f'{self.path}/WAVECAR') != 0:
-            save_list += ['WAVECAR']
-        if os.path.getsize(f'{self.path}/CHGCAR') != 0:
-            save_list += ['CHGCAR']
+        if os.path.isfile(f'{self.path}/WAVECAR'):
+            if os.path.getsize(f'{self.path}/WAVECAR') != 0:
+                save_list += ['WAVECAR']
+        if os.path.isfile(f'{self.path}/CHGCAR'):
+            if os.path.getsize(f'{self.path}/CHGCAR') != 0:
+                save_list += ['CHGCAR']
         for file in files_list:
             if file not in save_list:
                 os.remove(f"{self.path}/{file}")
 
     def submit(self, dict_new_tags=None):
-        self.rm_vasp_outputs()  # todo: update this function so that it does not remove useful wavecar and chgcar
+        self.rm_vasp_outputs()
         if dict_new_tags is not None:  # e.g. re-submit with ALGO = Normal when NELM is reached
             for tag in dict_new_tags:
                 self.incar.update_tag(key=tag, value=dict_new_tags[tag])
@@ -343,9 +345,11 @@ class JobNative:
                 for tag in dict_new_tags:
                     self.incar.update_tag(key=tag, value=dict_new_tags[tag])
             # Start from WAVECAR and CHGCAR if needed
-            if os.path.getsize(f'{self.path}/WAVECAR') != 0:
-                self.incar.update_tag(key='ISTART', value=1)
-            if os.path.getsize(f'{self.path}/CHGCAR') != 0:
-                self.incar.update_tag(key='ICHARG', value=1)
+            if os.path.isfile(f'{self.path}/WAVECAR'):
+                if os.path.getsize(f'{self.path}/WAVECAR') != 0:
+                    self.incar.update_tag(key='ISTART', value=1)
+            if os.path.isfile(f'{self.path}/CHGCAR'):
+                if os.path.getsize(f'{self.path}/CHGCAR') != 0:
+                    self.incar.update_tag(key='ICHARG', value=1)
             self.incar.write(self.path)
             self.submit()
