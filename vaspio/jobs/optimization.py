@@ -197,7 +197,7 @@ class JobNative:
     def converged(self):
         if 'NSW' not in self.incar.tags:  # is SPE
             return ' 1 F= ' in \
-                   str(subprocess.check_output(f"tail -n4 {self.path}/{name_std_output}", shell=True))
+                   str(subprocess.check_output(f"tail -n4 {self.path}/OSZICAR", shell=True))
         else:
             return 'reached required accuracy' in \
                str(subprocess.check_output(f"tail -n4 {self.path}/{name_std_output}", shell=True))
@@ -214,14 +214,17 @@ class JobNative:
         return diff
 
     def nsw_reached(self):
-        if os.path.isfile(f"{self.path}/OSZICAR"):
-            try:
-                output = str(subprocess.check_output(f"grep F {self.path}/OSZICAR", shell=True))
-                return f"{self.incar.tags['NSW']} F=" in output
-            except subprocess.CalledProcessError:
-                return False
-        else:
+        if 'NSW' not in self.incar.tags:
             return False
+        else:
+            if os.path.isfile(f"{self.path}/OSZICAR"):
+                try:
+                    output = str(subprocess.check_output(f"grep F {self.path}/OSZICAR", shell=True))
+                    return f"{self.incar.tags['NSW']} F=" in output
+                except subprocess.CalledProcessError:
+                    return False
+            else:
+                return False
 
     def nelm_reached(self):
         if os.path.isfile(f"{self.path}/OSZICAR"):

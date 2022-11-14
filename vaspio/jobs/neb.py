@@ -228,6 +228,8 @@ class NebML:
             job_status = 'empty initial.traj'
         elif os.path.getsize(f'{self.path}/final.traj') == 0:
             job_status = 'empty final.traj'
+        elif not os.path.isfile(f"{self.path}/last_predicted_path.traj"):
+            job_status = 'last_predicted_path.traj missing'
         else:
             job_status = 'max wallclock'
         return job_status
