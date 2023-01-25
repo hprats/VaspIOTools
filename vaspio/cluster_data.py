@@ -7,8 +7,6 @@ path_submission_script_freq_native = '/home/ucechpr/scripts/submission/freq_nati
 path_submission_script_ase = '/home/ucechpr/scripts/submission/ase'
 potcars_dir_cluster = '/home/ucechpr/apps/vasp/vasp_PP_LIBRARY/potpaw_PBE'
 
-npar = 10
-
 
 def check_queue(job_name):
     in_queue = False

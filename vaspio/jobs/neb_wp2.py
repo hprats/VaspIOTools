@@ -14,11 +14,9 @@ from vaspio.cluster_data import *  # If executed locally, this could be an empty
 
 
 class NewNebNative:
-    # this has to be created locally, to visualize the generated path
-    # therefore, no PP_dict or potcars_dir is provided
 
     def __init__(self, path, images, incar, kpoints, atoms_initial, atoms_final,
-                 energy_initial, energy_final):
+                 energy_initial, energy_final, potcars_dir=potcars_dir_local, PP_dict=project_PP_dict):
         if isinstance(path, str):
             self.path = path
             self.images = images
@@ -29,6 +27,8 @@ class NewNebNative:
             self.atoms_final = atoms_final
             self.energy_initial = energy_initial
             self.energy_final = energy_final
+            self.potcars_dir = potcars_dir
+            self.PP_dict = PP_dict
 
     def create_job_dir(self):
         """Creates a new directory, with the name job_name, and writes there the VASP input files
@@ -91,7 +91,7 @@ class NewNebNative:
         os.system(f'{cmd} > {self.path}/POTCAR')
 
 
-class NewNebML:   # todo: update to select specific PP_dict in run.py
+class NewNebML:
 
     def __init__(self, path, n_images, fmax, incar, kpoints, atoms_initial, atoms_final,
                  potcars_dir=potcars_dir_local, PP_dict=project_PP_dict):
@@ -403,7 +403,7 @@ class NebML:
             "\toutfile.write(f'{dt_string}: starting job ...\\n')",
             " ",
             # Ase calculator
-            "ase_calculator = Vasp(setups={'base': 'recommended'},"  # todo: udpate to include custom PP_dict
+            "ase_calculator = Vasp(setups={'base': 'recommended', 'W': '_pv'},"  # todo: udpate so that W_pw is not used by default
         ]
         for tag in [tag for tag in self.incar.tags if tag not in ['ediffg', 'n_images', 'fmax']]:
             ase_script.append(f"\t{tag}={self.incar.tags[tag]},")

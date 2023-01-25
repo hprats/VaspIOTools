@@ -93,25 +93,24 @@ class JobNative:
     """A class that represents a VASP job, typically a finished one.
 
     Attributes:
-        name (str): The name of the folder containing the job files.
         path (str): The full path to the job folder.
         energy (float): The total energy of the system.
         status (str): A string describing the status of the job (e.g. qw, r, fine, ...). See get_job_status().
 
     Examples:
-        >>> job = JobNative(job_name='Ni_111#CO-top', path=f'path-to-folder/VC_001##CO2I_0-tM')
+        >>> job = JobNative(path=f'path-to-folder/VC_001##CO2I_0-tM')
         >>> job.read_from_cluster()
         >>> print(job.energy)
     """
 
-    def __init__(self, path, name, incar=None, energy=None, status=None, magmom=None):
+    def __init__(self, path):
 
         self.path = path
-        self.name = name
-        self.energy = energy
-        self.status = status
-        self.magmom = magmom
-        self.incar = incar
+        self.name = path.split('/')[-1]
+        self.energy = None
+        self.status = None
+        self.magmom = None
+        self.incar = None
 
     def write_json(self):
         """Write JSON file."""
@@ -142,8 +141,8 @@ class JobNative:
             return job
 
     @classmethod
-    def read_from_cluster(cls, path, name):
-        job = cls(path=path, name=name)
+    def read_from_cluster(cls, path):
+        job = cls(path=path)
         job.incar = Incar.from_file(path=path)
         job.kpoints = Kpoints.from_file(path=path)
         job.status = job.get_job_status()
@@ -153,21 +152,21 @@ class JobNative:
         return job
 
     @classmethod
-    def read_converged(cls, path, name):
+    def read_converged(cls, path):
         """Read a converged calculation."""
-        job = cls(path=path, name=name)
+        job = cls(path=path)
         job.incar = Incar.from_file(path=path)
         job.kpoints = Kpoints.from_file(path=path)
         job.atoms_poscar = read(f'{path}/POSCAR')
         if os.path.isfile(f"{path}/CONTCAR"):
             job.atoms_contcar = read(f'{path}/CONTCAR')
         else:
-            print(f"{name}: no CONTCAR file")
+            print(f"{job.name}: no CONTCAR file")
         if os.path.isfile(f"{path}/OSZICAR"):
             job.energy = job.get_energy_oszicar()
             job.magmom = job.get_magmom()
         else:
-            print(f"{name}: no OSZICAR file")
+            print(f"{job.name}: no OSZICAR file")
         return job
 
     def get_energy_oszicar(self):
