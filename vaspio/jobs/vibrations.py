@@ -89,7 +89,10 @@ class VibrationsNative:
                str(subprocess.check_output(f"tail -n4 {self.path}/OUTCAR", shell=True))
 
     def get_num_imaginary_frequencies(self):
-        output = str(subprocess.check_output(f"grep cm-1 {self.path}/OUTCAR", shell=True))
+        if os.path.isfile(f"{self.path}/vibrations.txt"):
+            output = str(subprocess.check_output(f"grep cm-1 {self.path}/vibrations.txt", shell=True))
+        else:
+            output = str(subprocess.check_output(f"grep cm-1 {self.path}/OUTCAR", shell=True))
         return output.count('f/i')
 
     def get_job_status(self):
@@ -102,6 +105,8 @@ class VibrationsNative:
             job_status = f'README: {readme_info}'
         elif not os.path.isfile(f"{self.path}/{name_std_output}"):
             job_status = 'not submitted'
+        elif os.path.isfile(f"{self.path}/vibrations.txt"):
+            job_status = 'converged'
         elif self.converged():
             job_status = 'converged'
         else:

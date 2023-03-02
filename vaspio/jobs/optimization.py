@@ -51,8 +51,7 @@ class NewJobNative:
             self.PP_dict = PP_dict
 
     def create_job_dir(self):
-        """Creates a new directory, with the name job_name, and writes there the VASP input files
-        i.e. INCAR, POSCAR, KPOINTS and POTCAR, and the submission script"""
+        """Creates a new director and writes there the VASP input files i.e. INCAR, POSCAR, KPOINTS and POTCAR"""
         if not os.path.exists(self.path):
             os.mkdir(self.path)
             self.incar.write(self.path)
@@ -103,14 +102,14 @@ class JobNative:
         >>> print(job.energy)
     """
 
-    def __init__(self, path):
+    def __init__(self, path, energy=None, status=None, incar=None, magmom=None):
 
         self.path = path
         self.name = path.split('/')[-1]
-        self.energy = None
-        self.status = None
-        self.magmom = None
-        self.incar = None
+        self.energy = energy
+        self.status = status
+        self.incar = incar
+        self.magmom = magmom
 
     def write_json(self):
         """Write JSON file."""
@@ -137,7 +136,7 @@ class JobNative:
             status = dct['status']
             magmom = dct['magmom']
 
-            job = cls(path=path, name=path.split('/')[-1], incar=incar, energy=energy, status=status, magmom=magmom)
+            job = cls(path=path, energy=energy, status=status, incar=incar, magmom=magmom)
             return job
 
     @classmethod
