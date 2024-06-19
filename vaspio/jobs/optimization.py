@@ -9,6 +9,7 @@ from ase.io import read
 
 from vaspio.input_files.incar import Incar
 from vaspio.input_files.kpoints import Kpoints
+from vaspio.input_files.potcar import write_potcar
 from vaspio.variables import *
 
 from vaspio.cluster_data import *
@@ -40,15 +41,15 @@ class NewJobNative:
     """
 
     # todo: update this so that in the future the custom PP_dict is not specified in variables.py and the default PP_dict is VASP_recommended_PP
-    def __init__(self, path, name, incar, kpoints, atoms, potcars_dir=potcars_dir_local, PP_dict=project_PP_dict):
+    def __init__(self, path, name, incar, kpoints, atoms, pp_dict=project_PP_dict, pp_path=potcars_dir_local):
         if isinstance(path, str):
             self.path = path
             self.name = name
             self.incar = incar
             self.kpoints = kpoints
             self.atoms = atoms
-            self.potcars_dir = potcars_dir
-            self.PP_dict = PP_dict
+            self.pp_dict = pp_dict
+            self.pp_path = pp_path
 
     def create_job_dir(self):
         """Creates a new director and writes there the VASP input files i.e. INCAR, POSCAR, KPOINTS and POTCAR"""
@@ -57,35 +58,12 @@ class NewJobNative:
             self.incar.write(self.path)
             self.kpoints.write(self.path)
             self.atoms.write(filename=f'{self.path}/POSCAR', vasp5=True)
-            self.write_potcar()
+            write_potcar(job_path=self.path,
+                         poscar_elements=self.atoms.get_chemical_symbols(),
+                         pp_dict=self.pp_dict,
+                         pp_path=self.pp_path)
         else:
             print(f'{self.path} already exists (nothing done)')
-
-    def write_potcar(self):
-        """Writes the POTCAR file to the current directory
-        First, a list of elements is created (elements_for_potcar), which determines which
-        atomic POTCAR files will be concatenated to make the final POTCAR"""
-        current_element = self.atoms.get_chemical_symbols()[0]
-        elements_for_potcar = [current_element]
-        for element in self.atoms.get_chemical_symbols()[1:]:
-            if element != current_element:
-                elements_for_potcar.append(element)
-                current_element = element
-        cmd = 'cat'
-        for element in elements_for_potcar:
-            cmd += f' {self.potcars_dir}/{self.PP_dict[element]}/POTCAR'
-        os.system(f'{cmd} > {self.path}/POTCAR')
-
-    def submit(self):
-        init_dir = os.getcwd()
-        os.chdir(self.path)
-        if job_scheduler == 'sge':
-            os.system(f'qsub -N {self.name} {name_submission_script}')
-        elif job_scheduler == 'slurm':
-            os.system(f'sbatch --job-name {self.name} {name_submission_script}')
-        else:
-            sys.exit('Invalid job_scheduler')
-        os.chdir(init_dir)
 
 
 class JobNative:
