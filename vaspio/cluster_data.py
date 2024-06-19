@@ -1,4 +1,4 @@
-# Cluster data test
+# Cluster data
 cluster_name = 'Young'
 job_scheduler = 'sge'
 
