@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+from copy import deepcopy
 from glob import glob
 import json
 
@@ -10,7 +11,6 @@ from ase.io import read
 from vaspio.input_files.incar import Incar
 from vaspio.input_files.kpoints import Kpoints
 from vaspio.input_files.potcar import write_potcar
-from vaspio.variables import *
 
 from vaspio.cluster_data import *
 
@@ -40,8 +40,7 @@ class NewJobNative:
         >>> )
     """
 
-    # todo: update this so that in the future the custom PP_dict is not specified in variables.py and the default PP_dict is VASP_recommended_PP
-    def __init__(self, path, name, incar, kpoints, atoms, pp_dict=project_PP_dict, pp_path=potcars_dir_local):
+    def __init__(self, path, name, incar, kpoints, atoms, pp_dict, pp_path):
         if isinstance(path, str):
             self.path = path
             self.name = name
@@ -176,11 +175,11 @@ class JobNative:
                    str(subprocess.check_output(f"tail -n4 {self.path}/OSZICAR", shell=True))
         else:
             return 'reached required accuracy' in \
-               str(subprocess.check_output(f"tail -n4 {self.path}/{name_std_output}", shell=True))
+               str(subprocess.check_output(f"tail -n4 {self.path}/{name_vasp_std_output}", shell=True))
 
     def bracketing_error(self):
         return 'bracketing' in \
-               str(subprocess.check_output(f"tail -n7 {self.path}/{name_std_output}", shell=True))
+               str(subprocess.check_output(f"tail -n7 {self.path}/{name_vasp_std_output}", shell=True))
 
     def get_dE_last_two_steps(self):
         output = str(subprocess.check_output(f"grep F {self.path}/OSZICAR | tail -n2", shell=True))
@@ -214,14 +213,14 @@ class JobNative:
             return False
 
     def bad_termination(self):
-        output = str(subprocess.check_output(f"tail -n10 {self.path}/{name_std_output}", shell=True))
+        output = str(subprocess.check_output(f"tail -n10 {self.path}/{name_vasp_std_output}", shell=True))
         if 'BAD TERMINATION' in output:
             return True
         else:
             return False
 
     def other_error(self):
-        output = str(subprocess.check_output(f"tail -n10 {self.path}/{name_std_output}", shell=True))
+        output = str(subprocess.check_output(f"tail -n10 {self.path}/{name_vasp_std_output}", shell=True))
         if 'error' in output and 'errors must be expected' not in output:
             return True
         else:
@@ -252,7 +251,7 @@ class JobNative:
             job_status = f'README: {readme_info}'
         elif os.path.getsize(f'{self.path}/POSCAR') == 0:
             job_status = 'empty poscar'
-        elif not os.path.isfile(f"{self.path}/{name_std_output}"):
+        elif not os.path.isfile(f"{self.path}/{name_vasp_std_output}"):
             job_status = 'not submitted'
         elif self.converged():
             job_status = 'converged'
@@ -284,7 +283,7 @@ class JobNative:
 
     def rm_vasp_outputs(self):
         files_list = [f for f in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, f))]
-        save_list = ['INCAR', 'POSCAR', 'KPOINTS', 'POTCAR', name_ase_script, name_submission_script]
+        save_list = ['INCAR', 'POSCAR', 'KPOINTS', 'POTCAR', name_submission_vasp_ase, name_submission_vasp_native]
         if os.path.isfile(f'{self.path}/WAVECAR'):
             if os.path.getsize(f'{self.path}/WAVECAR') != 0:
                 save_list += ['WAVECAR']
@@ -295,6 +294,7 @@ class JobNative:
             if file not in save_list:
                 os.remove(f"{self.path}/{file}")
 
+    # todo: use submit_job in functions.py and add new tags ouside this function
     def submit(self, dict_new_tags=None):
         self.rm_vasp_outputs()
         if dict_new_tags is not None:  # e.g. re-submit with ALGO = Normal when NELM is reached
@@ -304,9 +304,9 @@ class JobNative:
         init_dir = os.getcwd()
         os.chdir(self.path)
         if job_scheduler == 'sge':
-            os.system(f'qsub -N {self.name} {name_submission_script}')
+            os.system(f'qsub -N {self.name} {name_submission_vasp_native}')
         elif job_scheduler == 'slurm':
-            os.system(f'sbatch --job-name {self.name} {name_submission_script}')
+            os.system(f'sbatch --job-name {self.name} {name_submission_vasp_native}')
         else:
             sys.exit('Invalid job_scheduler')
         os.chdir(init_dir)
