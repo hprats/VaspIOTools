@@ -1,7 +1,7 @@
 import os
 import sys
 from glob import glob
-from vaspio.input_files.incar import Incar
+from vaspio.incar import Incar
 
 
 def submit_job(job_path, job_name, job_scheduler, path_submission_vasp_native, name_submission_vasp_native):
@@ -20,19 +20,24 @@ def submit_job(job_path, job_name, job_scheduler, path_submission_vasp_native, n
 
 def continue_job(job_path, job_name, job_scheduler, path_submission_vasp_native, name_submission_vasp_native,
                  dict_new_tags=None):
-    num_previous_refines = str(len(glob(f'{job_path}/ref*/')))
     if os.path.getsize(f'{job_path}/CONTCAR') == 0:
-        print(f'CHECK: Cannot continue {job_name}: empty CONTCAR')
+        print(f'CHECK: Cannot continue {job_path}: empty CONTCAR')
+    if os.path.isfile(f"{job_path}/CENTCAR"):
+        if os.path.getsize(f'{job_path}/CENTCAR') == 0:
+            print(f'CHECK: Cannot continue {job_path}: empty CENTCAR')
     else:
-        os.system(f"mkdir {job_path}/ref{num_previous_refines}")
-        os.system(f"cp {job_path}/* {job_path}/ref{num_previous_refines}")
-        os.system(f"cp {job_path}/CONTCAR {job_path}/POSCAR")
-        # Add new tags if needed
         if dict_new_tags is not None:
             incar = Incar.from_file(job_path)
             for tag in dict_new_tags:
                 incar.update_tag(key=tag, value=dict_new_tags[tag])
             incar.write(job_path)
+        num_previous_refines = str(len(glob(f'{job_path}/ref*/')))
+        os.system(f"mkdir {job_path}/ref{num_previous_refines}")
+        os.system(f"cp {job_path}/* {job_path}/ref{num_previous_refines}")
+        os.system(f"cp {job_path}/CONTCAR {job_path}/POSCAR")
+        if os.path.isfile(f"{job_path}/CENTCAR"):
+            os.system(f"cp {job_path}/CENTCAR {job_path}/POSCAR")
+            os.system(f"cp {job_path}/NEWMODECAR {job_path}/MODECAR")
         submit_job(job_path, job_name, job_scheduler, path_submission_vasp_native, name_submission_vasp_native)
 
 
@@ -51,7 +56,7 @@ def check_queue(job_name, path_qstat_list):
 
 def rm_vasp_outputs(self, name_submission_vasp_ase, name_submission_vasp_native):
     files_list = [f for f in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, f))]
-    save_list = ['INCAR', 'POSCAR', 'KPOINTS', 'POTCAR', name_submission_vasp_ase, name_submission_vasp_native]
+    save_list = ['INCAR', 'POSCAR', 'KPOINTS', 'POTCAR', 'MODECAR', name_submission_vasp_ase, name_submission_vasp_native]
     if os.path.isfile(f'{self.path}/WAVECAR'):
         if os.path.getsize(f'{self.path}/WAVECAR') != 0:
             save_list += ['WAVECAR']

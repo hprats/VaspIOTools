@@ -3,7 +3,7 @@ import sys
 import subprocess
 from glob import glob
 
-from vaspio.input_files.incar import Incar
+from vaspio.incar import Incar
 from vaspio.cluster_functions import check_queue
 
 
@@ -16,35 +16,38 @@ def get_job_status(job_path, job_name, job_scheduler, path_qstat_list, name_vasp
             readme_info = f.readlines()[0].strip()
         job_status = f'README: {readme_info}'
     elif os.path.getsize(f'{job_path}/POSCAR') == 0:
-        job_status = 'empty poscar'
+        job_status = 'empty POSCAR'
     elif not os.path.isfile(f"{job_path}/{name_vasp_std_output}"):
         job_status = 'not submitted'
     elif converged(job_path, name_vasp_std_output):
         job_status = 'converged'
     elif vasp_bin_not_loaded(job_path, job_scheduler):
-        job_status = 'VASP bin not loaded'
-    elif bracketing_error(job_path, name_vasp_std_output):
-        if get_dE_last_two_steps(job_path) <= 0.01:
-            job_status = 'converged'
-        else:
-            job_status = 'bracketing'
+        job_status = 'VASP binary file not loaded'
     elif len(glob(f'{job_path}/core.*')) > 0:
-        job_status = 'core file'
-    elif bad_termination(job_path, name_vasp_std_output):
-        if get_dE_last_two_steps(job_path) <= 0.01:
-            job_status = 'converged'
-        else:
-            job_status = 'bad termination'
-    elif nsw_reached(job_path):
-        job_status = 'NSW reached'
-    elif nelm_reached(job_path):
-        job_status = 'max wallclock, NELM reached'
-    elif not os.path.isfile(f"{job_path}/OSZICAR"):
-        job_status = 'error'
-    elif other_error(job_path, name_vasp_std_output):
-        job_status = 'error'
+        job_status = 'core file generated'
     else:
-        job_status = 'max wallclock'
+        incar = Incar.from_file(job_path)
+        if incar.tags('IBRION') == '5':
+            job_status = 'max wallclock or unclassified error'
+        else:
+            if bracketing_error(job_path, name_vasp_std_output):
+                if get_dE_last_two_steps(job_path) <= 0.01:
+                    job_status = 'converged'
+                else:
+                    job_status = 'bracketing'
+            elif bad_termination(job_path, name_vasp_std_output):
+                if get_dE_last_two_steps(job_path) <= 0.01:
+                    job_status = 'converged'
+                else:
+                    job_status = 'bad termination'
+            elif nsw_reached(job_path):
+                job_status = 'NSW reached'
+            elif nelm_reached(job_path):
+                job_status = 'max wallclock, NELM reached'
+            elif other_error(job_path, name_vasp_std_output):
+                job_status = 'unclassified error'
+            else:
+                job_status = 'max wallclock'
     return job_status
 
 

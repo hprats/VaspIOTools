@@ -15,3 +15,9 @@ def write_potcar(job_path, poscar_elements, pp_dict, pp_path):
     for element in elements_for_potcar:
         cmd += f' {pp_path}/{pp_dict[element]}/POTCAR'
     os.system(f'{cmd} > {job_path}/POTCAR')
+
+
+def write_modecar(job_path, displacement_vector):
+    with open(f"{job_path}/MODECAR", 'w') as outfile:
+        for i in range(len(displacement_vector)):
+            outfile.write(f"{displacement_vector[i][0]} {displacement_vector[i][1]} {displacement_vector[i][2]}\n")

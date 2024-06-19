@@ -1,3 +1,8 @@
+import os
+import subprocess
+import numpy as np
+
+
 def get_energy_oszicar(job_path):
     energy = None
     with open(f"{job_path}/OSZICAR") as infile:
@@ -24,3 +29,38 @@ def get_magmom(self):
     return magmom
 
 
+def get_num_imaginary_frequencies(self):
+    if os.path.isfile(f"{self.path}/vibrations.txt"):
+        output = str(subprocess.check_output(f"grep cm-1 {self.path}/vibrations.txt", shell=True))
+    else:
+        output = str(subprocess.check_output(f"grep cm-1 {self.path}/OUTCAR", shell=True))
+    return output.count('f/i')
+
+
+def get_displacement_vector_from_outcar(path):
+    with open(f"{path}/OUTCAR", 'r') as infile:
+        lines = infile.readlines()
+    # Find start of imaginary vibration output
+    line_start = 0
+    i = 0
+    for i in range(len(lines) - 1, 0, -1):
+        if ' f/i= ' in lines[i]:
+            line_start = i + 2
+            break
+    # Get length of imaginary vibration
+    line = lines[i + 2]
+    num_displacements = 0
+    while 'Finite differences POTIM=' not in line:
+        num_displacements += 1
+        i += 1
+        line = lines[i + 2]
+    # ignore white line at the end of displacements
+    num_displacements -= 1
+    # Save vibration to numpy array
+    displacement_vector = np.zeros((num_displacements, 3))
+    for i in range(num_displacements):
+        line = lines[line_start + i]
+        displacement_vector[i][0] = line.split()[-3]
+        displacement_vector[i][1] = line.split()[-2]
+        displacement_vector[i][2] = line.split()[-1]
+    return displacement_vector

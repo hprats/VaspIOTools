@@ -7,91 +7,13 @@ from glob import glob
 import ase.neb
 from ase import io
 
-from vaspio.variables import *
-from vaspio.input_files.incar import Incar
-from vaspio.input_files.kpoints import Kpoints
+
+from vaspio.incar import Incar
+from vaspio.kpoints import Kpoints
 from vaspio.cluster_data import *  # If executed locally, this could be an empty file
 
 
-class NewNebNative:
-
-    def __init__(self, path, images, incar, kpoints, atoms_initial, atoms_final,
-                 energy_initial, energy_final, potcars_dir=potcars_dir_local, PP_dict=project_PP_dict):
-        if isinstance(path, str):
-            self.path = path
-            self.images = images
-            self.name = path.split('/')[-1]
-            self.incar = incar
-            self.kpoints = kpoints
-            self.atoms_initial = atoms_initial
-            self.atoms_final = atoms_final
-            self.energy_initial = energy_initial
-            self.energy_final = energy_final
-            self.potcars_dir = potcars_dir
-            self.PP_dict = PP_dict
-
-    def create_job_dir(self):
-        """Creates a new directory, with the name job_name, and writes there the VASP input files
-        i.e. INCAR, POSCAR, KPOINTS and POTCAR, and the submission script"""
-        if not os.path.exists(self.path):
-            os.mkdir(self.path)
-            # Write input files
-            self.incar.write(self.path)
-            self.kpoints.write(self.path)
-            self.write_potcar()
-            self.write_energies()
-            # Create all folders
-            for i in range(self.images + 2):
-                if i <= 9:
-                    os.mkdir(f'{self.path}/0{i}')
-                else:
-                    os.mkdir(f'{self.path}/{i}')
-            # Write POSCAR files for reactants and products
-            self.atoms_initial.write(filename=f'{self.path}/00/POSCAR', vasp5=True)
-            if self.images <= 9:
-                self.atoms_final.write(filename=f'{self.path}/0{self.images + 1}/POSCAR', vasp5=True)
-            else:
-                self.atoms_final.write(filename=f'{self.path}/{self.images + 1}/POSCAR', vasp5=True)
-            # Write POSCAR files for images
-            constraints = self.atoms_initial.constraints
-            list_images = [self.atoms_initial]
-            for i in range(self.images):
-                image = self.atoms_initial.copy()
-                image.set_constraint(constraints)
-                list_images.append(image)
-            list_images.append(self.atoms_final)
-            neb = ase.neb.NEB(list_images, climb=False, k=0.5)
-            neb.interpolate('idpp')
-            for i in range(1, self.images + 1):
-                if i <= 9:
-                    list_images[i].write(filename=f'{self.path}/0{i}/POSCAR', vasp5=True)
-                else:
-                    list_images[i].write(filename=f'{self.path}/{i}/POSCAR', vasp5=True)
-        else:
-            print(f'{self.path} already exists (nothing done)')
-
-    def write_energies(self):
-        with open(f"{self.path}/energies.txt", 'w') as outfile:
-            outfile.write(f'{self.energy_initial}\n')
-            outfile.write(f'{self.energy_final}\n')
-
-    def write_potcar(self):
-        """Writes the POTCAR file to the current directory
-        First, a list of elements is created (elements_for_potcar), which determines which
-        atomic POTCAR files will be concatenated to make the final POTCAR"""
-        current_element = self.atoms_initial.get_chemical_symbols()[0]
-        elements_for_potcar = [current_element]
-        for element in self.atoms_initial.get_chemical_symbols()[1:]:
-            if element != current_element:
-                elements_for_potcar.append(element)
-                current_element = element
-        cmd = 'cat'
-        for element in elements_for_potcar:
-            cmd += f' {self.potcars_dir}/{self.PP_dict[element]}/POTCAR'
-        os.system(f'{cmd} > {self.path}/POTCAR')
-
-
-class NewNebML:
+class NewNebML:   # todo: update to select specific PP_dict in run.py
 
     def __init__(self, path, n_images, fmax, incar, kpoints, atoms_initial, atoms_final,
                  potcars_dir=potcars_dir_local, PP_dict=project_PP_dict):
@@ -403,7 +325,7 @@ class NebML:
             "\toutfile.write(f'{dt_string}: starting job ...\\n')",
             " ",
             # Ase calculator
-            "ase_calculator = Vasp(setups={'base': 'recommended', 'W': '_pv'},"  # todo: udpate so that W_pw is not used by default
+            "ase_calculator = Vasp(setups={'base': 'recommended'},"  # todo: udpate to include custom PP_dict
         ]
         for tag in [tag for tag in self.incar.tags if tag not in ['ediffg', 'n_images', 'fmax']]:
             ase_script.append(f"\t{tag}={self.incar.tags[tag]},")
@@ -465,3 +387,34 @@ class NebML:
         with open(f"{self.path}/{name_ase_script}", 'w') as outfile:
             for line in ase_script:
                 outfile.write(line + '\n')
+
+    def make_short(self, id_initial, id_final):
+        # Store previous neb and clean directoty
+        num_previous_refines = str(len(glob(f'{self.path}/ref*/')))
+        os.system(f"mkdir {self.path}/ref{num_previous_refines}")
+        os.system(f"cp {self.path}/* {self.path}/ref{num_previous_refines}")
+        self.rm_neb_outputs()
+        # Write new initial and final structures
+        initial = io.read(f"{self.path}/ref{num_previous_refines}/last_predicted_path.traj", index=id_initial)
+        final = io.read(f"{self.path}/ref{num_previous_refines}/last_predicted_path.traj", index=id_final)
+        # todo: correct positions?
+        initial.write(filename=f"{self.path}/initial.traj")
+        final.write(filename=f"{self.path}/final.traj")
+        # Write new run.py script and submit
+        with open(f"{self.path}/ref{num_previous_refines}/run.py", "r") as infile:
+            lines = infile.readlines()
+        ase_script = self.get_import_lines()
+        ase_script += self.get_calculator_lines(lines=lines)
+        ase_script += self.get_MLneb_lines(lines=lines, restart=True)
+        ase_script += self.get_print_lines()
+        with open(f"{self.path}/{name_ase_script}", 'w') as outfile:
+            for line in ase_script:
+                outfile.write(line)
+        self.submit()
+
+    def rm_neb_outputs(self):
+        files_list = [f for f in os.listdir(self.path) if os.path.isfile(os.path.join(self.path, f))]
+        save_list = [name_submission_script]
+        for file in files_list:
+            if file not in save_list:
+                os.remove(f"{self.path}/{file}")
