@@ -1,6 +1,7 @@
 import os
 import subprocess
 import numpy as np
+from ase import io
 
 
 def get_energy_oszicar(job_path):
@@ -64,3 +65,27 @@ def get_displacement_vector_from_outcar(path):
         displacement_vector[i][1] = line.split()[-2]
         displacement_vector[i][2] = line.split()[-1]
     return displacement_vector
+
+
+def get_mlneb_image_energies(job_path):
+    if os.path.isfile(f"{job_path}/ML-NEB.traj"):
+        images = io.read(f"{job_path}/ML-NEB.traj", index=":")
+        image_energies = np.zeros(len(images))
+        for i in range(len(images)):
+            image_energies[i] = images[i].get_potential_energy()
+    elif os.path.isfile(f"{job_path}/last_predicted_path.traj"):
+        images = io.read(f"{job_path}/last_predicted_path.traj", index=":")
+        image_energies = np.zeros(len(images))
+        for i in range(len(images)):
+            image_energies[i] = images[i].get_potential_energy()
+    else:
+        image_energies = None
+    return image_energies
+
+
+def get_mlneb_energy_barrier(image_energies):
+    return np.max(image_energies) - image_energies[0]
+
+
+def get_mlneb_reaction_energy(image_energies):
+    return image_energies[-1] - image_energies[0]

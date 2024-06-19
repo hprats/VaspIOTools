@@ -3,8 +3,7 @@ cluster_name = 'Young'
 job_scheduler = 'sge'
 
 # Names
-name_submission_vasp_ase = 'run.py'
-name_submission_vasp_native = 'vasp_sub'
+name_submission_vasp = 'vasp_sub'
 name_vasp_std_output = 'vasp.out'
 
 # Paths

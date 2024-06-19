@@ -4,21 +4,21 @@ from glob import glob
 from vaspio.incar import Incar
 
 
-def submit_job(job_path, job_name, job_scheduler, path_submission_vasp_native, name_submission_vasp_native):
+def submit_job(job_path, job_name, job_scheduler, path_submission_script, name_submission_script):
     # todo: add functions to change memory, wall-time limit, number of nodes ... etc
     init_dir = os.getcwd()
     os.chdir(job_path)
-    os.system(f"cp {path_submission_vasp_native}/{name_submission_vasp_native} {job_path}")
+    os.system(f"cp {path_submission_script}/{name_submission_script} {job_path}")
     if job_scheduler == 'sge':
-        os.system(f'qsub -N {job_name} {name_submission_vasp_native}')
+        os.system(f'qsub -N {job_name} {name_submission_script}')
     elif job_scheduler == 'slurm':
-        os.system(f'sbatch --job-name {job_name} {name_submission_vasp_native}')
+        os.system(f'sbatch --job-name {job_name} {name_submission_script}')
     else:
         sys.exit('Invalid job_scheduler')
     os.chdir(init_dir)
 
 
-def continue_job(job_path, job_name, job_scheduler, path_submission_vasp_native, name_submission_vasp_native,
+def continue_job(job_path, job_name, job_scheduler, path_submission_script, name_submission_script,
                  dict_new_tags=None):
     if os.path.getsize(f'{job_path}/CONTCAR') == 0:
         print(f'CHECK: Cannot continue {job_path}: empty CONTCAR')
@@ -38,7 +38,7 @@ def continue_job(job_path, job_name, job_scheduler, path_submission_vasp_native,
         if os.path.isfile(f"{job_path}/CENTCAR"):
             os.system(f"cp {job_path}/CENTCAR {job_path}/POSCAR")
             os.system(f"cp {job_path}/NEWMODECAR {job_path}/MODECAR")
-        submit_job(job_path, job_name, job_scheduler, path_submission_vasp_native, name_submission_vasp_native)
+        submit_job(job_path, job_name, job_scheduler, path_submission_script, name_submission_script)
 
 
 def check_queue(job_name, path_qstat_list):
