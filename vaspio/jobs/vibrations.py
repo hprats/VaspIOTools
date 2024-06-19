@@ -13,10 +13,8 @@ from vaspio.cluster_data import *
 
 class NewVibrationsNative:
 
-    def __init__(self, path, name, incar, kpoints, atoms, num_free_atoms, potim=0.03, potcars_dir=potcars_dir_local,
+    def __init__(self, incar, kpoints, atoms, num_free_atoms, potim=0.03, potcars_dir=potcars_dir_local,
                  PP_dict=project_PP_dict):
-        self.path = path
-        self.name = name
         self.incar = incar
         self.kpoints = kpoints
         self.atoms = atoms
@@ -31,15 +29,15 @@ class NewVibrationsNative:
         c = FixAtoms(indices=list(range(len(self.atoms) - num_free_atoms)))
         self.atoms.set_constraint(c)
 
-    def create_job_dir(self):
-        if not os.path.exists(self.path):
-            os.mkdir(self.path)
-            self.incar.write(self.path)
-            self.kpoints.write(self.path)
-            self.atoms.write(filename=f'{self.path}/POSCAR', vasp5=True)
+    def create_job_dir(self, job_path):
+        if not os.path.exists(job_path):
+            os.mkdir(job_path)
+            self.incar.write(job_path)
+            self.kpoints.write(job_path)
+            self.atoms.write(filename=f'{job_path}/POSCAR', vasp5=True)
             self.write_potcar()
         else:
-            print(f'{self.path} already exists (nothing done)')
+            print(f'{job_pathh} already exists (nothing done)')
 
     def write_potcar(self):
         current_element = self.atoms.get_chemical_symbols()[0]

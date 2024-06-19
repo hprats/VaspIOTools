@@ -7,7 +7,7 @@ from glob import glob
 import ase.neb
 from ase import io
 
-from vaspio.variables import *
+
 from vaspio.input_files.incar import Incar
 from vaspio.input_files.kpoints import Kpoints
 from vaspio.cluster_data import *  # If executed locally, this could be an empty file
