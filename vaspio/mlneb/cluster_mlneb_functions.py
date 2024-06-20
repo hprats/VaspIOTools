@@ -1,7 +1,10 @@
+import os
 import sys
+from glob import glob
+from ase import io
 
 from vaspio.cluster_functions import submit_job
-from vaspio.mlneb.mlneb_status import get_mlneb_status
+
 
 def get_import_lines():
     lines = [
@@ -136,3 +139,36 @@ def continue_mlneb(job_path, job_name, job_status, job_scheduler, path_submissio
         for line in ase_script:
             outfile.write(line)
     submit_job(job_path, job_name, job_scheduler, path_submission_script, name_submission_script)
+
+
+def make_short(job_path, job_name, job_scheduler, path_submission_script, name_submission_script, id_initial, id_final):
+    # Store previous neb and clean directory
+    num_previous_refines = str(len(glob(f'{job_path}/ref*/')))
+    os.system(f"mkdir {job_path}/ref{num_previous_refines}")
+    os.system(f"cp {job_path}/* {job_path}/ref{num_previous_refines}")
+    rm_mlneb_outputs(job_path)
+    # Write new initial and final structures
+    initial = io.read(f"{job_path}/ref{num_previous_refines}/last_predicted_path.traj", index=id_initial)
+    final = io.read(f"{job_path}/ref{num_previous_refines}/last_predicted_path.traj", index=id_final)
+    # todo: correct positions?
+    initial.write(filename=f"{job_path}/initial.traj")
+    final.write(filename=f"{job_path}/final.traj")
+    # Write new run.py script and submit
+    with open(f"{job_path}/ref{num_previous_refines}/run.py", "r") as infile:
+        lines = infile.readlines()
+    ase_script = get_import_lines()
+    ase_script += get_calculator_lines(lines=lines)
+    ase_script += get_mlneb_lines(lines=lines, restart=True)
+    ase_script += get_print_lines()
+    with open(f"{job_path}/run.py", 'w') as outfile:
+        for line in ase_script:
+            outfile.write(line)
+    submit_job(job_path, job_name, job_scheduler, path_submission_script, name_submission_script)
+
+
+def rm_mlneb_outputs(job_path):
+    files_list = [f for f in os.listdir(job_path) if os.path.isfile(os.path.join(job_path, f))]
+    save_list = []  # no files to save currently, maybe one could save the submission script
+    for file in files_list:
+        if file not in save_list:
+            os.remove(f"{job_path}/{file}")
