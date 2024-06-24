@@ -1,15 +1,6 @@
 import os
-import sys
-import numpy as np
-import subprocess
-from glob import glob
-
 import ase.neb
 from ase import io
-
-
-from vaspio.incar import Incar
-from vaspio.kpoints import Kpoints
 
 
 class NewNebML:   # todo: update to select specific PP_dict in run.py
@@ -51,6 +42,7 @@ class NewNebML:   # todo: update to select specific PP_dict in run.py
         io.write(f"{job_path}/optimized_structures/list_images.traj", list_images)
 
     def write_ase_script(self, job_path):
+        print("Warning, currently the pp_dict and pp_path flags are ignored and setups={'base': 'recommended'} is used")
         ase_script = [
             # Imports
             "from ase.io import read",
@@ -68,7 +60,7 @@ class NewNebML:   # todo: update to select specific PP_dict in run.py
             "\toutfile.write(f'{dt_string}: starting job ...\\n')",
             " ",
             # Ase calculator
-            "ase_calculator = Vasp(setups={'base': 'recommended'},"  # todo: udpate to include custom PP_dict
+            "ase_calculator = Vasp(setups={'base': 'recommended'},"  # todo: update to include custom PP_dict
         ]
         for tag in [tag for tag in self.incar.tags if tag not in ['ediffg', 'n_images', 'fmax']]:
             ase_script.append(f"\t{tag}={self.incar.tags[tag]},")
