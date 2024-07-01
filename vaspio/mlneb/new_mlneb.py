@@ -1,20 +1,21 @@
 import os
-import ase.neb
+import ase.mep
 from ase import io
 
 
 class NewNebML:   # todo: update to select specific PP_dict in run.py
 
-    def __init__(self, incar, kpoints, atoms, pp_dict, pp_path, n_images, fmax, atoms_initial, atoms_final):
-        self.incar = incar
+    def __init__(self, incar, kpoints, n_images, fmax, atoms_initial, atoms_final, pp_dict, pp_path):
+        incar.add_tag(key='n_images', value=n_images)
+        incar.add_tag(key='fmax', value=fmax)
+        self.incar = incar   # todo: replace by incar_tags?
         self.kpoints = kpoints
-        self.atoms = atoms
-        self.pp_dict = pp_dict
-        self.pp_path = pp_path
         self.n_images = n_images
         self.fmax = fmax
         self.atoms_initial = atoms_initial
         self.atoms_final = atoms_final
+        self.pp_dict = pp_dict   # todo: currently this is ignored
+        self.pp_path = pp_path
 
     def create_job_dir(self, job_path):
         if not os.path.exists(job_path):
@@ -37,7 +38,7 @@ class NewNebML:   # todo: update to select specific PP_dict in run.py
             image.set_constraint(constraints)
             list_images.append(image)
         list_images.append(self.atoms_final)
-        neb = ase.neb.NEB(list_images, climb=False, k=0.5)
+        neb = ase.mep.NEB(list_images, climb=False, k=0.5)
         neb.interpolate('idpp')
         io.write(f"{job_path}/optimized_structures/list_images.traj", list_images)
 

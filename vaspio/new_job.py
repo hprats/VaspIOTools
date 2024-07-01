@@ -32,7 +32,7 @@ class NewJobNative:
 
 class NewVibrationAnalysisNative:
     """A class that represents a new VASP job."""
-    def __init__(self, incar, kpoints, atoms, pp_dict, pp_path, num_free_atoms, potim=0.03):
+    def __init__(self, incar, kpoints, atoms, num_free_atoms, potim, pp_dict, pp_path):
 
         incar.update_tag(key='IBRION', value='5')
         incar.update_tag(key='POTIM', value=potim)

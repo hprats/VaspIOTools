@@ -83,9 +83,11 @@ def get_mlneb_image_energies(job_path):
     return image_energies
 
 
-def get_mlneb_energy_barrier(image_energies):
+def get_mlneb_energy_barrier(job_path):
+    image_energies = get_mlneb_image_energies(job_path)
     return np.max(image_energies) - image_energies[0]
 
 
-def get_mlneb_reaction_energy(image_energies):
+def get_mlneb_reaction_energy(job_path):
+    image_energies = get_mlneb_image_energies(job_path)
     return image_energies[-1] - image_energies[0]
