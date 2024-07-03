@@ -116,7 +116,7 @@ def get_print_lines():
     return lines
 
 
-def continue_mlneb(job_path, job_name, job_status, job_scheduler, path_submission_script, name_submission_script):
+def continue_mlneb(job_path, job_name, job_status):
     with open(f"{job_path}/run.py", "r") as infile:
         lines = infile.readlines()
     ase_script = get_import_lines()
@@ -138,7 +138,7 @@ def continue_mlneb(job_path, job_name, job_status, job_scheduler, path_submissio
     with open(f"{job_path}/run.py", 'w') as outfile:
         for line in ase_script:
             outfile.write(line)
-    submit_job(job_path, job_name, job_scheduler, path_submission_script, name_submission_script)
+    submit_job(job_path=job_path, job_name=job_name, job_type='ase')
 
 
 def make_short(job_path, job_name, job_scheduler, path_submission_script, name_submission_script, id_initial, id_final):
@@ -163,7 +163,7 @@ def make_short(job_path, job_name, job_scheduler, path_submission_script, name_s
     with open(f"{job_path}/run.py", 'w') as outfile:
         for line in ase_script:
             outfile.write(line)
-    submit_job(job_path, job_name, job_scheduler, path_submission_script, name_submission_script)
+    submit_job(job_path=job_path, job_name=job_name, job_type='ase')
 
 
 def rm_mlneb_outputs(job_path):

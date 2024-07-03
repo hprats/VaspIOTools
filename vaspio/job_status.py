@@ -5,10 +5,11 @@ from glob import glob
 
 from vaspio.incar import Incar
 from vaspio.cluster_functions import check_queue
+from vaspio.cluster_data import *
 
 
-def get_job_status(job_path, job_name, job_scheduler, path_qstat_list, name_vasp_std_output):
-    in_queue, status = check_queue(job_name, path_qstat_list)
+def get_job_status(job_path, job_name):
+    in_queue, status = check_queue(job_name)
     if in_queue:
         job_status = status
     elif os.path.isfile(f"{job_path}/README"):
@@ -19,9 +20,9 @@ def get_job_status(job_path, job_name, job_scheduler, path_qstat_list, name_vasp
         job_status = 'empty POSCAR'
     elif not os.path.isfile(f"{job_path}/{name_vasp_std_output}"):
         job_status = 'not submitted'
-    elif converged(job_path, name_vasp_std_output):
+    elif converged(job_path):
         job_status = 'converged'
-    elif vasp_bin_not_loaded(job_path, job_scheduler):
+    elif vasp_bin_not_loaded(job_path):
         job_status = 'VASP binary file not loaded'
     elif len(glob(f'{job_path}/core.*')) > 0:
         job_status = 'core file generated'
@@ -30,12 +31,12 @@ def get_job_status(job_path, job_name, job_scheduler, path_qstat_list, name_vasp
         if incar.tags('IBRION') == '5':
             job_status = 'max wallclock or unclassified error'
         else:
-            if bracketing_error(job_path, name_vasp_std_output):
+            if bracketing_error(job_path):
                 if get_dE_last_two_steps(job_path) <= 0.01:
                     job_status = 'converged'
                 else:
                     job_status = 'bracketing'
-            elif bad_termination(job_path, name_vasp_std_output):
+            elif bad_termination(job_path):
                 if get_dE_last_two_steps(job_path) <= 0.01:
                     job_status = 'converged'
                 else:
@@ -44,14 +45,14 @@ def get_job_status(job_path, job_name, job_scheduler, path_qstat_list, name_vasp
                 job_status = 'NSW reached'
             elif nelm_reached(job_path):
                 job_status = 'max wallclock, NELM reached'
-            elif other_error(job_path, name_vasp_std_output):
+            elif other_error(job_path):
                 job_status = 'unclassified error'
             else:
                 job_status = 'max wallclock'
     return job_status
 
 
-def converged(job_path, name_vasp_std_output):
+def converged(job_path):
     incar = Incar.from_file(job_path)
     if 'NSW' not in incar.tags:  # is SPE
         return ' 1 F= ' in \
@@ -61,7 +62,7 @@ def converged(job_path, name_vasp_std_output):
            str(subprocess.check_output(f"tail -n4 {job_path}/{name_vasp_std_output}", shell=True))
 
 
-def vasp_bin_not_loaded(job_path, job_scheduler):
+def vasp_bin_not_loaded(job_path):
     try:
         if job_scheduler == 'sge':
             std_error_file = glob(f"{job_path}/*.e*")[0]
@@ -75,7 +76,7 @@ def vasp_bin_not_loaded(job_path, job_scheduler):
         return False
 
 
-def bracketing_error(job_path, name_vasp_std_output):
+def bracketing_error(job_path):
     return 'bracketing' in \
            str(subprocess.check_output(f"tail -n7 {job_path}/{name_vasp_std_output}", shell=True))
 
@@ -88,7 +89,7 @@ def get_dE_last_two_steps(job_path):
     return diff
 
 
-def bad_termination(job_path, name_vasp_std_output):
+def bad_termination(job_path):
     output = str(subprocess.check_output(f"tail -n10 {job_path}/{name_vasp_std_output}", shell=True))
     if 'BAD TERMINATION' in output:
         return True
@@ -124,7 +125,7 @@ def nelm_reached(job_path):
         return False
 
 
-def other_error(job_path, name_vasp_std_output):
+def other_error(job_path):
     output = str(subprocess.check_output(f"tail -n10 {job_path}/{name_vasp_std_output}", shell=True))
     if 'error' in output and 'errors must be expected' not in output:
         return True

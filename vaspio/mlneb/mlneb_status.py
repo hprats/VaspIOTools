@@ -5,11 +5,12 @@ import numpy as np
 
 from vaspio.cluster_functions import check_queue
 from vaspio.read_functions import get_mlneb_image_energies
+from vaspio.cluster_data import *
 
 
-def get_mlneb_status(job_path, job_name, path_qstat_list, name_vasp_std_output):
+def get_mlneb_status(job_path, job_name):
     """Execute it on the cluster."""
-    in_queue, status = check_queue(job_name, path_qstat_list)
+    in_queue, status = check_queue(job_name)
     if in_queue:
         job_status = status
     elif os.path.isfile(f"{job_path}/README"):
@@ -20,7 +21,7 @@ def get_mlneb_status(job_path, job_name, path_qstat_list, name_vasp_std_output):
         job_status = 'core file'  # see std error
     elif not os.path.isfile(f"{job_path}/{name_vasp_std_output}"):
         job_status = 'not submitted'
-    elif mlneb_converged(job_path, name_vasp_std_output):
+    elif mlneb_converged(job_path):
         if new_minimum(job_path):
             job_status = 'converged (new minimum)'
         else:
@@ -40,7 +41,7 @@ def get_mlneb_status(job_path, job_name, path_qstat_list, name_vasp_std_output):
     return job_status
 
 
-def mlneb_converged(job_path, name_vasp_std_output):
+def mlneb_converged(job_path):
     return 'Energy barrier' in \
            str(subprocess.check_output(f"tail -n4 {job_path}/{name_vasp_std_output}", shell=True))
 
