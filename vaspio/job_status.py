@@ -54,12 +54,16 @@ def get_job_status(job_path, job_name):
 
 def converged(job_path):
     incar = Incar.from_file(job_path)
-    if 'NSW' not in incar.tags:  # is SPE
-        return ' 1 F= ' in \
-               str(subprocess.check_output(f"tail -n4 {job_path}/OSZICAR", shell=True))
-    elif incar.tags['IBRION'] == '5':  # is vibrational analysis
-        return 'Voluntary context switches' in \
-               str(subprocess.check_output(f"tail -n4 {job_path}/OUTCAR", shell=True))
+    if 'NSW' not in incar.tags:
+        if 'IBRION' in incar.tags:
+            if incar.tags['IBRION'] == '5':  # is vibrational analysis
+                return 'Voluntary context switches' in \
+                    str(subprocess.check_output(f"tail -n4 {job_path}/OUTCAR", shell=True))
+            else:
+                return False
+        else:  # is SPE
+            return ' 1 F= ' in \
+                   str(subprocess.check_output(f"tail -n4 {job_path}/OSZICAR", shell=True))
     else:
         return 'reached required accuracy' in \
            str(subprocess.check_output(f"tail -n4 {job_path}/{name_vasp_std_output}", shell=True))
