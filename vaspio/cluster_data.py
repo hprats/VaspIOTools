@@ -11,5 +11,5 @@ path_qstat_list = '/home/ucechpr'
 path_submission_vasp_native = '/home/ucechpr/scripts/submission/vasp_native'
 path_submission_vasp_vtst = '/home/ucechpr/scripts/submission/vasp_vtst'
 path_submission_vasp_ase = '/home/ucechpr/scripts/submission/vasp_ase'
-pp_path = '/home/ucechpr/apps/vasp/vasp_PP_LIBRARY/potpaw_PBE'
+pp_path = '/home/ucechpr/codes/ase_vasp/vasp_PP_LIBRARY/potpaw_PBE'
 

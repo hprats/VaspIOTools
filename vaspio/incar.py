@@ -34,7 +34,7 @@ class Incar:
         if isinstance(new_tags, dict):
             self._tags = new_tags
         else:
-            print("New tags variable for INCAR file is not a dictionary")
+            print("new_tags must be a dictionary")
 
     def add_tag(self, key, value):
         """Add a new tag."""

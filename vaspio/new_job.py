@@ -36,7 +36,8 @@ class NewVibrationAnalysisNative:
 
         incar.update_tag(key='IBRION', value='5')
         incar.update_tag(key='POTIM', value=potim)
-        incar.remove_tag(key='NPAR')
+        if 'NPAR' in incar.tags:
+            incar.remove_tag(key='NPAR')
 
         self.incar = incar
         self.kpoints = kpoints

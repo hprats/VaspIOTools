@@ -28,7 +28,7 @@ def get_job_status(job_path, job_name):
         job_status = 'core file generated'
     else:
         incar = Incar.from_file(job_path)
-        if incar.tags('IBRION') == '5':
+        if incar.tags['IBRION'] == '5':
             job_status = 'max wallclock or unclassified error'
         else:
             if bracketing_error(job_path):
@@ -57,6 +57,9 @@ def converged(job_path):
     if 'NSW' not in incar.tags:  # is SPE
         return ' 1 F= ' in \
                str(subprocess.check_output(f"tail -n4 {job_path}/OSZICAR", shell=True))
+    elif incar.tags['IBRION'] == '5':  # is vibrational analysis
+        return 'Voluntary context switches' in \
+               str(subprocess.check_output(f"tail -n4 {job_path}/OUTCAR", shell=True))
     else:
         return 'reached required accuracy' in \
            str(subprocess.check_output(f"tail -n4 {job_path}/{name_vasp_std_output}", shell=True))
